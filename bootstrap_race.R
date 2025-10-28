@@ -72,8 +72,6 @@ bootstrap_stat <- function(data, indices, wave_name, mediators, race_var) {
     new_var <- paste0(m, "_", race_var, "0")
     dat_expanded[[new_var]] <- intercept + resid_sd * dat_expanded$UM # applied to all expanded simulations
     
-    print(summary(dat[[m]]))
-    print(summary(dat_expanded[[new_var]]))
   }
   
   #------------------------------------
@@ -145,7 +143,7 @@ bootstrap_stat <- function(data, indices, wave_name, mediators, race_var) {
           coefs[["(Intercept)"]] +                                  # intercept
           coefs[[race_var]] +                                       # main effect of race_var = 1
           coefs[[m]]             * !!race0_var +                    # main effect of mediator
-          coefs[[paste0(race_var, ":", m)]] * !!race0_var +         # interaction: race_var × mediator
+          (coefs[[paste0(race_var, ":", m)]] %||% 0) * !!race0_var +         # interaction: race_var × mediator
           coefs[[paste0(m, "2")]] * (!!race0_var)^2 +               # quadratic effect of mediator
           coefs[["H1GI1Y"]]      * H1GI1Y +                         # H1GI1Y main effect
           coefs[[paste0(race_var, ":H1GI1Y")]]  * H1GI1Y +          # interaction: race_var × H1GI1Y
@@ -273,7 +271,7 @@ for (wave in names(waves)) {
       dplyr::select(Wave, Race, Mediator, Effect_Type, Mean, SE, CI_Low, CI_High) # final table
     
     saveRDS(results, file = paste0("/home/thom1336/healthdis/data/race/bootstrap_results_", wave, "_", race_var, ".rds"))
-    saveRDS(boot_results, file = paste0("/home/thom1336/healthdis/data/race/boot_object_", wave, "_", race_var, ".rds"))
+  #  saveRDS(boot_results, file = paste0("/home/thom1336/healthdis/data/race/boot_object_", wave, "_", race_var, ".rds"))
     
     cat("Saved results for wave:", wave, "and race variable:", race_var, "\n")
   }
