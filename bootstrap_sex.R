@@ -68,9 +68,7 @@ bootstrap_stat <- function(data, indices, wave_name, mediators) {
     # simulate mediator under sex = 0 (on expanded)
     new_var <- paste0(m, "_sex0")
     dat_expanded[[new_var]] <- intercept + resid_sd * dat_expanded$UM # applied to all expanded simulations
-    
-    print(summary(dat[[m]]))
-    print(summary(dat_expanded[[new_var]]))
+
   }
   
   #------------------------------------
@@ -268,7 +266,7 @@ for (wave in names(waves)) {
     dplyr::select(Wave, Mediator, Effect_Type, Mean, SE, CI_Low, CI_High) # final table
 
   saveRDS(results, file = paste0("/home/thom1336/healthdis/data/sex/bootstrap_results_", wave, ".rds"))
-  saveRDS(boot_results, file = paste0("/home/thom1336/healthdis/data/sex/boot_object_", wave, ".rds"))
+ # saveRDS(boot_results, file = paste0("/home/thom1336/healthdis/data/sex/boot_object_", wave, ".rds"))
 
   cat("Saved results for wave:", wave, "\n")
 }
