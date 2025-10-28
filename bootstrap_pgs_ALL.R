@@ -71,9 +71,7 @@ bootstrap_stat <- function(data, indices, wave_name, mediators, pgs_var) {
     # simulate mediator under pgs_var = 0 (on expanded)
     new_var <- paste0(m, "_", pgs_var, "0")
     dat_expanded[[new_var]] <- intercept + resid_sd * dat_expanded$UM # applied to all expanded simulations
-    
-    print(summary(dat[[m]]))
-    print(summary(dat_expanded[[new_var]]))
+
   }
   
   #------------------------------------
@@ -96,8 +94,6 @@ bootstrap_stat <- function(data, indices, wave_name, mediators, pgs_var) {
     model_nameY <- paste0("model_", outcome_var, "_", pgs_var, "_", m)
     assign(model_nameY, modelY, envir = .GlobalEnv)
     
-    cat("\n--- Summary for", model_nameY, "---\n")
-    print(summary(modelY))
   })
   
   #-----------------------------------------------------------------------
@@ -142,14 +138,14 @@ bootstrap_stat <- function(data, indices, wave_name, mediators, pgs_var) {
     dat_expanded <<- dat_expanded %>%  # apply prediction values to all expanded data sets
       mutate(
         !!output_var_10 :=
-          coefs[["(Intercept)"]] +                                  # intercept
-          coefs[[pgs_var]] +                                       # main effect of pgs_var = 1
-          coefs[[m]]             * !!pgs0_var +                    # main effect of mediator
-          coefs[[paste0(pgs_var, ":", m)]] * !!pgs0_var +         # interaction: pgs_var × mediator
-          coefs[[paste0(m, "2")]] * (!!pgs0_var)^2 +               # quadratic effect of mediator
-          coefs[["H1GI1Y"]]      * H1GI1Y +                         # H1GI1Y main effect
-          coefs[[paste0(pgs_var, ":H1GI1Y")]]  * H1GI1Y +          # interaction: pgs_var × H1GI1Y
-          rmse * UY                                                 # residual
+          coefs[["(Intercept)"]] +                                    # intercept
+          coefs[[pgs_var]] +                                          # main effect of pgs_var = 1
+          coefs[[m]]             * !!pgs0_var +                       # main effect of mediator
+          (coefs[[paste0(pgs_var, ":", m)]] %||% 0) * !!pgs0_var +    # interaction: pgs_var × mediator
+          coefs[[paste0(m, "2")]] * (!!pgs0_var)^2 +                  # quadratic effect of mediator
+          coefs[["H1GI1Y"]]      * H1GI1Y +                           # H1GI1Y main effect
+          coefs[[paste0(pgs_var, ":H1GI1Y")]]  * H1GI1Y +             # interaction: pgs_var × H1GI1Y
+          rmse * UY                                                   # residual
       )
     
     cat("Created:", paste0(outcome_var, "_10_", m), "\n")
@@ -273,7 +269,7 @@ for (wave in names(waves)) {
       dplyr::select(Wave, pgs, Mediator, Effect_Type, Mean, SE, CI_Low, CI_High) # final table
     
     saveRDS(results, file = paste0("/home/thom1336/healthdis/data/pgs/bootstrap_results_ALL_", wave, "_", pgs_var, ".rds"))
-    saveRDS(boot_results, file = paste0("/home/thom1336/healthdis/data/pgs/boot_object_ALL_", wave, "_", pgs_var, ".rds"))
+  #  saveRDS(boot_results, file = paste0("/home/thom1336/healthdis/data/pgs/boot_object_ALL_", wave, "_", pgs_var, ".rds"))
     
     cat("Saved results for wave:", wave, "and pgs variable:", pgs_var, "\n")
   }
