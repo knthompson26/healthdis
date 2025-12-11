@@ -20,26 +20,26 @@ The `/all/` directory contains the raw code files used to create the tables and 
 
 **Main analyses: Health Disparity Framework** 
 
-1. bootstrap_pgs_ALL.R Function to create Interventional Disparity Effect and Total Effect caluclations for PGS as the exposure: Monte Carlo simulation on a 1000-fold expanded dataset and with 1000 bootstrap samples.
-2. bootstrap_race.R. Function to create Interventional Disparity Effect and Total Effect caluclations for race as the exposure: Monte Carlo simulation on a 1000-fold expanded dataset and with 1000 bootstrap samples.
-3. bootstrap_ses.R. Function to create Interventional Disparity Effect and Total Effect caluclations for SES as the exposure: Monte Carlo simulation on a 1000-fold expanded dataset and with 1000 bootstrap samples.
-4. bootstrap_sex.R. Function to create Interventional Disparity Effect and Total Effect caluclations for sex as the exposure: Monte Carlo simulation on a 1000-fold expanded dataset and with 1000 bootstrap samples.
+1. `bootstrap_pgs_ALL.R` Function to create Interventional Disparity Effect and Total Effect caluclations for PGS as the exposure: Monte Carlo simulation on a 1000-fold expanded dataset and with 1000 bootstrap samples.
+2. `bootstrap_race.R` Function to create Interventional Disparity Effect and Total Effect caluclations for race as the exposure: Monte Carlo simulation on a 1000-fold expanded dataset and with 1000 bootstrap samples.
+3. `bootstrap_ses.R` Function to create Interventional Disparity Effect and Total Effect caluclations for SES as the exposure: Monte Carlo simulation on a 1000-fold expanded dataset and with 1000 bootstrap samples.
+4. `bootstrap_sex.R` Function to create Interventional Disparity Effect and Total Effect caluclations for sex as the exposure: Monte Carlo simulation on a 1000-fold expanded dataset and with 1000 bootstrap samples.
                 
 ***
 
 **Sensitivity analysis: Item-level** 
 
-1. bootstrap_pgs_ALL_item.R. Function to create Interventional Disparity Effect and Total Effect caluclations for PGS as the exposure and *each item (31 items)* as the mediator: Monte Carlo simulation on a 1000-fold expanded dataset and with 1000 bootstrap samples.
-2. bootstrap_race_item.R. Function to create Interventional Disparity Effect and Total Effect caluclations for race as the exposure and *each item (31 items)* as the mediator: Monte Carlo simulation on a 1000-fold expanded dataset and with 1000 bootstrap samples.
-3. bootstrap_ses_item.R. Function to create Interventional Disparity Effect and Total Effect caluclations for SES as the exposure and *each item (31 items)* as the mediator: Monte Carlo simulation on a 1000-fold expanded dataset and with 1000 bootstrap samples.
-4. bootstrap_sex_item.R. Function to create Interventional Disparity Effect and Total Effect caluclations for sex as the exposure and *each item (31 items)* as the mediator: Monte Carlo simulation on a 1000-fold expanded dataset and with 1000 bootstrap samples.
+1. `bootstrap_pgs_ALL_item.R` Function to create Interventional Disparity Effect and Total Effect caluclations for PGS as the exposure and *each item (31 items)* as the mediator: Monte Carlo simulation on a 1000-fold expanded dataset and with 1000 bootstrap samples.
+2. `bootstrap_race_item.R` Function to create Interventional Disparity Effect and Total Effect caluclations for race as the exposure and *each item (31 items)* as the mediator: Monte Carlo simulation on a 1000-fold expanded dataset and with 1000 bootstrap samples.
+3. `bootstrap_ses_item.R` Function to create Interventional Disparity Effect and Total Effect caluclations for SES as the exposure and *each item (31 items)* as the mediator: Monte Carlo simulation on a 1000-fold expanded dataset and with 1000 bootstrap samples.
+4. `bootstrap_sex_item.R` Function to create Interventional Disparity Effect and Total Effect caluclations for sex as the exposure and *each item (31 items)* as the mediator: Monte Carlo simulation on a 1000-fold expanded dataset and with 1000 bootstrap samples.
                 
 ***
 
 **Sensitivity analysis: Within-race** 
 
-1. bootstrap_pgs_ALL_byrace.R. Function to create Interventional Disparity Effect and Total Effect caluclations for PGS as the exposure seperately *within each racial group (White, Black, Asian, Native American)*: Monte Carlo simulation on a 1000-fold expanded dataset and with 1000 bootstrap samples.
-2. bootstrap_ses_byrace.R. Function to create Interventional Disparity Effect and Total Effect caluclations for SES as the exposure seperately *within each racial group (White, Black, Asian, Native American)*: Monte Carlo simulation on a 1000-fold expanded dataset and with 1000 bootstrap samples.
-3. bootstrap_sex_byrace.R. Function to create Interventional Disparity Effect and Total Effect caluclations for sex as the exposure seperately *within each racial group (White, Black, Asian, Native American)*: Monte Carlo simulation on a 1000-fold expanded dataset and with 1000 bootstrap samples.
+1. `bootstrap_pgs_ALL_byrace.R` Function to create Interventional Disparity Effect and Total Effect caluclations for PGS as the exposure seperately *within each racial group (White, Black, Asian, Native American)*: Monte Carlo simulation on a 1000-fold expanded dataset and with 1000 bootstrap samples.
+2. `bootstrap_ses_byrace.R` Function to create Interventional Disparity Effect and Total Effect caluclations for SES as the exposure seperately *within each racial group (White, Black, Asian, Native American)*: Monte Carlo simulation on a 1000-fold expanded dataset and with 1000 bootstrap samples.
+3. `bootstrap_sex_byrace.R` Function to create Interventional Disparity Effect and Total Effect caluclations for sex as the exposure seperately *within each racial group (White, Black, Asian, Native American)*: Monte Carlo simulation on a 1000-fold expanded dataset and with 1000 bootstrap samples.
 
 ***
