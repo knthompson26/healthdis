@@ -14,6 +14,8 @@ Pre-registration is available on the OSF: [https://osf.io/akzhd/](https://osf.io
 
 Analyses for this project were conducted in R (Version 4.0.3) on the Rossmann cluster hosted by Purdue Univeristy. Below lists all scripts with a brief explanation. 
 
+The `/all/` directory contains the raw code files used to create the tables and figures in the manuscript. All files here are example template files that only include one confounder for clarity. 
+
 ***
 
 **Main analyses: Health Disparity Framework** 
