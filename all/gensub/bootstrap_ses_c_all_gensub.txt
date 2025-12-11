@@ -1,0 +1,17 @@
+#!/bin/bash
+# FILENAME:  bootstrap_ses_c_all_gensub.txt
+
+#SBATCH -A life-a 
+#SBATCH --nodes=1                   # Request all cores on a single node
+#SBATCH --ntasks=45                 # Request 45 CPU cores
+#SBATCH --time=120:00:00            # Job time limit
+#SBATCH --partition=cpu
+#SBATCH --job-name=bootstrap_ses_c_all_gensub
+#SBATCH --output=bootstrap_ses_c_all_gensub.out  # Standard output log
+#SBATCH --error=bootstrap_ses_c_all_gensub.err   # Error log
+
+set -euo pipefail
+
+module load r/4.4.1   # load R
+
+Rscript bootstrap_ses_c_all_gensub.R
