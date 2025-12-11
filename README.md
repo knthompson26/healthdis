@@ -4,7 +4,7 @@ This repository holds all the scripts for the manuscript: *Are social support in
 
 September, 2025
 
-**Katherine N Thompson**, Evelina Akimova, Geyu Zhou, Yeongmi Jeong, Erin C. Dunn, Elisabeth Noland, Moritz Herle, and Robbee Wedow. 
+**Katherine N. Thompson**, Shawn Bauldry, Evelina Akimova, Geyu Zhou, Yeongmi Jeong, Erin C. Dunn, Elisabeth Noland, Moritz Herle, and Robbee Wedow. 
 
 All code created by [Katherine N Thompson](https://scholar.google.co.uk/citations?user=xD4dn1IAAAAJ&hl=en). 
 
