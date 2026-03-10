@@ -44,15 +44,13 @@ Below provides the file structure with a brief description of each script.
 *By-sex*
 
 1. `/robust/pgs_bysex.R` PGS as the exposure and stratified by sex
-2. `/robust/sex_bysex.R` Sex as the exposure and stratified by sex
-3. `/robust/race_bysex.R` Race as the exposure and stratified by sex
-4. `/robust/ses_bysex.R` SES as the exposure and stratified by sex
+2. `/robust/race_bysex.R` Race as the exposure and stratified by sex
+3. `/robust/ses_bysex.R` SES as the exposure and stratified by sex
 
 *By-race*
 
 1. `/robust/pgs_byrace.R` PGS as the exposure and stratified by race
 2. `/robust/sex_byrace.R` Sex as the exposure and stratified by race
-3. `/robust/race_byrace.R` Race as the exposure and stratified by race
-4. `/robust/ses_byrace.R` SES as the exposure and stratified by race
+3. `/robust/ses_byrace.R` SES as the exposure and stratified by race
                 
 ***
