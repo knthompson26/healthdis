@@ -1,0 +1,2526 @@
+---
+title: "Data preparation for social connection and depression health disparity" 
+author: "Katherine N Thompson"
+date: "2024-11-04"
+output:  
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: 2
+    toc_float:
+      collapsed: false
+    number_sections: false
+    highlight: monochrome
+    theme: flatly
+    code_folding: show
+    includes:
+      after_body: footer.html
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      comment = NA,
+                      prompt = FALSE,
+                      cache = FALSE,
+                      message = FALSE,
+                      warning = FALSE,
+                      results = 'markup')
+
+options(bitmapType = 'quartz') # to render fonts better
+```
+
+```{r Clear global environment, include=FALSE}
+remove(list = ls())
+```
+
+```{r Load packages, include=FALSE}
+library(knitr)
+library(haven)
+library(psych) 
+library(tidyr)
+library(lavaan)
+library(ggplot2)
+library(broom)
+library(mice)
+library(questionr) 
+library(readr)
+library(data.table)
+library(tidyverse)
+library(dplyr) #conflicts with tidyverse for e.g. rename and row_number
+library(nnet)
+```
+
+```{r set seed, include=FALSE}
+# Set seed for reproducibility
+set.seed(457987)
+```
+
+# README 
+
+This script is to prepare all data for health disparity analysis of social connection on depression, preprint available here: https://doi.org/10.17605/OSF.IO/ZHSXR 
+
+The overall aim of this study is to understand the extent to which an intervention on social connection in childhood can mitigate the association between vulnerable characteristics and depression in adulthood. Using the health disparity framework, we will test mediation models between vulnerable characteristics (genetic vulnerability, socio-economic position, sex, and race), social connection, and depression symptoms.
+
+Our research questions are as follows:
+
+1. How much of the disparity in depression symptoms (Y) between polygenic risk (X=0,1,2,3,4) quintiles would remain, if we were to intervene on inclusion, community, social connection, and friendship (M) so that those with the highest genetic risk receive the same support and inclusion as those with the lowest genetic risk (M(X=0)).
+2. How much of the disparity in depression symptoms (Y) between males (X=0) and females (X=1) would remain, if we were to intervene on inclusion, community, social connection, and friendship (M) so that women receive the same support and inclusion as men (M(X=0)).
+3. How much of the disparity in depression symptoms (Y) would remain both between White (X=0) and Black (X=1) people and White (X=0) and Asian (X=1) people, if we were to intervene on inclusion, community, social connection, and friendship (M) so that Black or Asian people receive the same support and inclusion as White people (M(X=0)).
+4. How much of the disparity in depression symptoms (Y) between people from low (X=0) and high (X=1) socio-economic position families would remain, if we were to intervene on inclusion, community, social connection, and friendship (M) so that low socio- economic position families receive the same support and inclusion as high socio- economic position (M(X=0)).
+
+We assume no relatedness - no familial and school relatedness. 
+
+# Functions
+
+```{r functions}
+# Random imputation function
+random_sample_imputation <- function(x) {
+  missing <- is.na(x) # Identify missing values
+  x[missing] <- sample(x[!missing], size = sum(missing), replace = TRUE) # Draw the exact number of replacements
+  return(x)
+}
+
+# standardize IID across datasets
+convert_iid_to_char <- function(df) {
+  df %>% dplyr::mutate(IID = as.character(IID))
+}
+
+# Identify variables with more than a specified number of NAs
+find_vars_with_na <- function(data, threshold) {
+  vars_with_na <- colSums(is.na(data))
+  vars_with_na_more_than_threshold <- names(vars_with_na[vars_with_na > threshold])
+  num_na <- vars_with_na[vars_with_na > threshold]
+  return(list(num_na))
+}
+
+# Function to check if a variable is binary (2 unique non-NA values)
+is_binary <- function(x) {
+  n_unique <- length(unique(na.omit(x)))
+  return(n_unique == 2)
+}
+
+# function to reverse code items so that ALL items have high scores for agree/yes
+reverse_code <- function(x) {
+  min_x <- min(x, na.rm = TRUE)
+  max_x <- max(x, na.rm = TRUE)
+  max_x + min_x - x
+}
+
+# check the variable format
+check_variable_formats <- function(df) {
+  df %>%
+    dplyr::summarise(across(everything(), ~ class(.))) %>%
+    pivot_longer(cols = everything(), names_to = "Variable", values_to = "Type")
+}
+
+# Function to shorten description for renaming
+shorten_description <- function(desc) {
+  desc %>%
+    str_replace_all("\\b(You|Your|you|your)\\b", "") %>%  # Remove "you" and "your"
+    str_replace_all("\\b(the|that|this)\\b", "") %>%  # Remove common stopwords
+    str_replace_all("\\b(How much do|did|Most of the time|feel|do)\\b", "") %>%  # Remove common phrases
+    str_replace_all("[^a-zA-Z0-9 ]", "") %>%  # Remove special characters
+    str_squish() %>%  # Remove extra spaces
+    str_to_lower() %>%
+    str_replace_all(" ", "_")  # Replace spaces with underscores
+}
+
+# reorder the correlation matrix
+reorder_cor_matrix <- function(cor_matrix){
+ #Use correlation between variables as distance
+ dd <- as.dist((1-cor_matrix)/2)
+ hc <- hclust(dd)
+ cormat <-cor_matrix[hc$order, hc$order]
+}
+
+# replace ggsave 
+save_gg_cairo <- function(plot, filename, width = 900, height = 800) {
+  library(Cairo)
+  CairoPNG(filename, width = width, height = height)
+  print(plot)
+  if (!is.null(dev.list())) dev.off()
+}
+
+# function to create efa plot 
+create_efa_plot <- function(efa_fit, output_file) {
+# Unclass and reshape loadings
+  loadings <- as.data.frame(unclass(efa_fit$loadings))
+  loadings$Item <- rownames(loadings)  # Add Item column
+  
+  loadings.m <- reshape2::melt(loadings, id = "Item",
+                               variable.name = "Factor", value.name = "Loading")
+  
+  # Create ggplot
+  efa_plot <- ggplot(loadings.m, aes(Item, abs(Loading), fill = Loading)) +
+    facet_wrap(~Factor, nrow = 1) +
+    geom_bar(stat = "identity") +
+    coord_flip() +
+    scale_fill_gradient2(name = "Loading",
+                         high = "blue", mid = "white", low = "red",
+                         midpoint = 0, guide = F) +
+    ylab("Loading Strength") +
+    theme_bw(base_size = 10)
+  
+  # Save the plot
+  save_gg_cairo(efa_plot, file = output_file, height = 600, width = 1300)
+}
+
+# standardize IID across datasets
+convert_iid_to_char <- function(df) {
+  df %>% mutate(IID = as.character(IID))
+}
+```
+
+# Read in data 
+
+## Wave 1
+
+We will use social connection variables from Wave 1. 
+
+```{r read wave1 inhome}
+dat.W1.raw <- read_xpt("/project/rche/data/datasets/addhealth/Core Files - Wave I/Wave I In Home Interview Data/allwave1.xpt")
+ncol(dat.W1.raw)
+nrow(dat.W1.raw)
+```
+
+## Wave 2
+
+We will use depression symptoms at Wave 2. 
+
+```{r read wave 2 inhome}
+dat.W2.raw <- read_xpt("/project/rche/data/datasets/addhealth/Core Files - Wave II/Wave II In Home Interview Data/wave2.xpt")
+ncol(dat.W2.raw)
+nrow(dat.W2.raw)
+```
+
+## Wave 3
+
+We will use diagnostic information at Wave 3
+
+```{r read wave 3 inhome}
+dat.W3.raw <- read_xpt("/project/rche/data/datasets/addhealth/Core Files - Wave III/Wave III In Home Interview Data/wave3/wave3.xpt")
+ncol(dat.W3.raw)
+nrow(dat.W3.raw)
+```
+
+## Wave 4
+
+We will use depression symptoms at wave 4. 
+
+```{r read wave 4 inhome}
+dat.W4.raw <- read_xpt("/project/rche/data/datasets/addhealth/Core Files - Wave IV/Wave IV In Home Interview Data/wave4/wave4.xpt")
+ncol(dat.W4.raw)
+nrow(dat.W4.raw)
+```
+
+## Wave 5
+
+```{r read wave 4 inhome}
+dat.W5.raw <- read_xpt("/project/rche/data/datasets/addhealth/Core Files - Wave V/Wave V Mixed-Mode Survey Data/wave5.xpt")
+ncol(dat.W5.raw)
+nrow(dat.W5.raw)
+```
+
+## Sample weights
+
+```{r read in sample weights}
+dat_wave1_weights <- read_xpt("/project/rche/data/datasets/addhealth/Additional Weight Files/Wave I In-Home Weight Components/w1homewc.xpt")
+dat_wave2_weights <- read_xpt("/project/rche/data/datasets/addhealth/Additional Weight Files/Wave II In-Home Weight Components/w2homewc.xpt")
+dat_wave4_weights <- read_xpt("/project/rche/data/datasets/addhealth/Additional Weight Files/Wave IV In-Home Weight Components/w4homewc.xpt")
+dat_school_weights <- read_xpt("/project/rche/data/datasets/addhealth/Additional Weight Files/Add Health School Weights/schwt.xpt")
+```
+
+## Derived variables
+
+These include: SES and Race
+
+```{r derived variables}
+dat_ses.raw <- read_xpt("/project/rche/data/datasets/addhealth/Constructed Files/Constructed SES Variables/conses.xpt")
+dat_race.raw <- read_xpt("/project/rche/data/datasets/addhealth/Constructed Files/Race/race.xpt")
+```
+
+
+# Select variables
+
+## Exposures
+
+### Sex - binary
+
+Have also included year of birth, school ID, and if their sibling is also in the study. 
+
+```{r select school and }
+dat_sex <- dat.W1.raw %>%
+  dplyr::select(AID, 
+         BIO_SEX, 
+         H1GI1Y,
+         SCID, 
+         STUDSIBA, STUDSIBB, STUDSIBC, STUDSIBD, STUDSIBE, STUDSIBF, STUDSIBG, SMP08, SMP09)
+```
+
+### SES - continuous
+
+```{r select the SES variable}
+dat_ses <- dat_ses.raw %>%
+  dplyr::select(AID, SES = SESPC_AL) %>%
+  dplyr::mutate(AID = as.character(AID))
+```
+
+### Race - categorical
+
+```{r select the SES variable}
+dat_race <- dat_race.raw %>%
+  dplyr::select(AID, RACE1)
+```
+
+## Mediators: Social conection
+
+Create list of all social variables. 
+
+Notes:
+* FR_FLAG is number of nominated friends - but this is only dependent on the time that their interview was conducted. First it was 1 friends and then they changed it to 5. 
+* "RR_FLAG" is Yes to relationship but no info in INHOME25 due to coding error
+* "H1RE7" is Many places of worship have activities for teenagers, in the past 12 months, how often did you attend such youth activities. We will randomly impute for those who don't have religious 
+* Sibling items   "H1WS1A",  # How much time do you and sibling spend together - sib 1 and "H1WS4A",  # How often do you feel love for sibling - sib 1 have been removed as they have high missingness when using unrelated indiviudals (around 9K missing). 
+
+```{r list of social connection items}
+sc_items <- c(
+  # school
+  "H1ED19",  # You feel close to the people at your school
+  "H1ED20",  # You feel like you are part of your school
+  "H1ED21",  # Students at your school are prejudiced
+  "H1ED22",  # You are happy to be at your school
+  "H1ED23",  # The teachers at your school treat students fairly
+  "H1ED24",  # You feel safe in your school
+  "H1PR2",   # How much do you feel that your teachers care about you
+  # family
+  "H1WP9",   # How close do you feel to your mother
+  "H1WP10",  # How much do you think your mother cares about you
+  "H1WP13",  # How close do you feel to your father
+  "H1WP14",  # How much do you think your father cares about you
+  "H1PF1",   # Most of the time, your mother is warm and loving towards you
+  "H1PF4",   # You are satisfied with the way your mother and you communicate with each other
+  "H1PF5",   # Overall, you are satisfied with your relationship with your mother
+  "H1PR3",   # How much do you feel that your parents care about you
+  "H1PR5",   # How much do you feel that people in your family understand you
+  # friends
+  "H1MF6A",  # Did you go to X house during the past seven days - friend 1, male
+  "H1FF6A",  # Did you go to X house during the past seven days - friend 1, female
+  "H1MF7A",  # Did you meet X after school to hang out or go somewhere during the past seven days - friend 1, male
+  "H1FF7A",  # Did you meet X after school to hang out or go somewhere during the past seven days - friend 1, female
+  "H1MF8A",  # Did you spend time with X during the past weekend - friend 1, male
+  "H1FF8A",  # Did you spend time with X during the past weekend - friend 1, female
+  "H1MF9A",  # Did you talk to X about a problem during the past seven days - friend 1, male
+  "H1FF9A",  # Did you talk to X about a problem during the past seven days - friend 1, female
+  "H1MF10A", # Did you talk to X on the telephone during the past seven days - friend 1, male
+  "H1FF10A", # Did you talk to X on the telephone during the past seven days - friend 1, female
+  "H1RR1",   # Have you had a special romantic relationship with any one
+  "H1DA7",   # During the past week, how many times did you just hang out with friends
+  "H1PR4",   # How much do you feel that your friends care about you
+  # neighbourhood
+  "H1NB1",   # You know most of the people in your neighbourhood
+  "H1NB2",   # In the past month, you have stopped on the street to talk with someone who lives in your neighbourhood
+  "H1NB3",   # People in this neighbourhood look out for each other
+  "H1RE7",   # Many places of worship have activities for teenagers, in the past 12 months, how often did you attend such youth activities
+  # general social support and inclusion
+  "H1PF35",  # You feel socially accepted
+  "H1PF36",  # You feel loved and wanted
+  "H1PR1"    # How much do you feel that adults care about you
+)
+```
+
+```{r select social variable from full wave1}
+dat.social.raw <- dat.W1.raw %>%
+  dplyr::select(AID, sc_items)
+```
+
+## Outcome: CESD scale at Wave 2 and Wave 4
+
+```{r depression outcome items}
+CESD.W2.items <- c("H2FS1",           # bothered 
+                   "H2FS2",           # poor appetite
+                   "H2FS3",           # couldn't shake the blues
+                   "H2FS4",           # just as good as other people  - reversed
+                   "H2FS5",           # trouble paying attention
+                   "H2FS6",           # felt depressed
+                   "H2FS7",           # too tired to do things
+                   "H2FS8",           # hopeful about future          - reversed
+                   "H2FS9",           # life had been a failure
+                   "H2FS10",          # felt fearful 
+                   "H2FS11",          # happy                         - reversed
+                   "H2FS12",          # talked less than usual
+                   "H2FS13",          # felt lonely
+                   "H2FS14",          # people were unfriendly
+                   "H2FS15",          # enjoyed life                  - reversed 
+                   "H2FS16",          # felt sad 
+                   "H2FS17",          # felt people disliked you
+                   "H2FS18",          # hard to get started
+                   "H2FS19")          # life was not worth living
+
+CESD.W24.items <- c("H2FS1", 
+                     "H2FS3", 
+                     "H2FS4", 
+                     "H2FS5", 
+                     "H2FS6", 
+                     "H2FS7", 
+                     "H2FS11", 
+                     "H2FS15", 
+                     "H2FS16", 
+                     "H2FS17") 
+
+CESD.W4.items <- c("H4MH18", 
+                   "H4MH19", 
+                   "H4MH20", 
+                   "H4MH21", 
+                   "H4MH22", 
+                   "H4MH23", 
+                   "H4MH24", 
+                   "H4MH25", 
+                   "H4MH26", 
+                   "H4MH27") 
+```
+
+```{r key for W2 scoring}
+CESD.items.key.W2 <- c(  # scoring key: -1 is reverse coded
+                      1, # 1
+                      1, # 2
+                      1,  # 3
+                     -1, # 4
+                      1, # 5 
+                      1, # 6
+                      1, # 7 
+                     -1, # 8
+                      1, # 9
+                      1, # 10
+                     -1, # 11
+                      1, # 12
+                      1, # 13
+                      1, # 14
+                     -1, # 15
+                      1, # 16
+                      1, # 17
+                      1, # 18
+                      1  # 19
+                     ) 
+```
+
+```{r key for W4 scoring}
+CESD.items.key.W4 <- c(1, # scoring key: -1 is reverse coded
+                      1, 
+                     -1, 
+                      1, 
+                      1, 
+                      1, 
+                     -1, 
+                     -1, 
+                      1, 
+                      1) 
+```
+
+```{r select wave 2 and wave 4 outcome items}
+dat_outcome2.raw <- dat.W2.raw %>% dplyr::select(AID, CESD.W2.items)
+dat_outcome24.raw <- dat.W2.raw %>% dplyr::select(AID, CESD.W24.items)
+dat_outcome4.raw <- dat.W4.raw %>% dplyr::select(AID, CESD.W4.items)
+```
+
+# Missingness 
+
+Complete W2 outcome N = 14,696
+-> Complete unrelated N = 10,865
+   -> Complete Sex N = 10,865
+    -> Complete Race N = 10,622
+      -> Complete SES N = 9,987 - this dataset is called *dat_W2pheno*
+        -> Complete social connection N = 9,987 - this doesn't drop as has been imputed to be *dat_W2pheno_imp*
+   -> Complete PGS N = 8,826 (SEE health_disparity_social SCRIPT FOR MEREGED N)
+
+Complete W4 outcome N = 15,697 
+-> Complete unrelated N = 12,140
+   -> Complete Sex N = 12,140
+    -> Complete Race N = 11,875
+      -> Complete SES N = 11,139 - this dataset is called *dat_W4pheno*
+        -> Complete social connection N = 11,139 - this doesn't drop as has been imputed to be *dat_W4pheno_imp*
+    -> Complete PGS N = 8,826 (SEE health_disparity_social SCRIPT FOR MEREGED N)
+
+## W2 outcome
+
+```{r cleaning missingness coding}
+dat_outcome2 <- dat_outcome2.raw %>%
+  dplyr::mutate(across(c(CESD.W2.items), 
+                ~ case_when(. %in% c(6, 7, 8, 9) ~ NA_real_, 
+                            TRUE ~ .))) 
+```
+
+```{r loop for missingness of depression items}
+items.missing <- c()
+
+for (i in CESD.W2.items) {
+  
+  new_varname <- paste0(i, "_missing")
+  
+  dat_outcome2 <- dat_outcome2 %>%
+     dplyr::mutate(!!new_varname :=
+           if_else(
+               !is.na(!!sym(i)),     # !! unquotes the variable and tells it to use as object not string 
+               true = "Not missing",
+               false = "Missing"
+           ))
+  
+  items.missing <- c(items.missing, new_varname) # creates a list of these variables 
+}
+
+# rename the general list to W1A specific
+CESD.W2.items.missing <- items.missing
+```
+
+```{r output for missingness CESD.W1A}
+CESD.W2.missing.freq <- map_dfr(CESD.W2.items.missing, ~ freq(dat_outcome2[[.]]) %>% head(1), .id = "Item")
+row.names(CESD.W2.missing.freq) <- NULL
+
+# number of missing for each item 
+CESD.W2.missing.freq
+```
+
+```{r number of items that are missing CESD.W2}
+dat_outcome2 <- dat_outcome2 %>%
+  dplyr::mutate(total_missing_CESD = 
+           rowSums(dplyr::select(., CESD.W2.items.missing) == "Missing")) # sums the number of "missing"s for each person 
+
+freq(dat_outcome2$total_missing_CESD) # number of items individuals have missing
+```
+
+Remove those with more than one item missing for sum score.  
+
+```{r remove those with more than one item missing}
+dat_outcome2 <- dat_outcome2 %>% filter(total_missing_CESD < 2)
+```
+
+### Create sum score 
+
+```{r create W1 depression score}
+# sum score for CES-D depression W1A
+CESD.scored.items.W2 <- scoreItems(keys = CESD.items.key.W2,
+                                items = dat_outcome2[CESD.W2.items],
+                                totals = TRUE,    # calculate totals
+                                missing = TRUE,   # keep missing items
+                                impute = 'none',  # don't impute missing values
+                                min = 0, 
+                                max = 3)
+
+# add score to data frame
+dat_outcome2 <- dat_outcome2 %>%
+  dplyr::mutate(CESD_W2 = as.numeric(scale(CESD.scored.items.W2$scores))) %>%
+  dplyr::mutate(CESD_W2_notscaled = as.numeric(CESD.scored.items.W2$scores))
+
+# standard deviation of nonsclaed score 
+sd(dat_outcome2$CESD_W2_notscaled)
+```
+
+*CESD_W2* is the scaled sum score for depression at wave 2. 
+
+#### Create W2W4 sum score 
+
+Create a 10-item score that matches the scale from W4 - **this will be joined to the clean W2 and W2_PGS files at the end of the script**
+
+```{r cleaning missingness coding}
+dat_outcome24 <- dat_outcome24.raw %>%
+  dplyr::mutate(across(c(CESD.W24.items), 
+                ~ case_when(. %in% c(6, 7, 8, 9) ~ NA_real_, 
+                            TRUE ~ .))) 
+```
+
+```{r loop for missingness of depression items}
+items.missing <- c()
+
+for (i in CESD.W24.items) {
+  
+  new_varname <- paste0(i, "_missing")
+  
+  dat_outcome24 <- dat_outcome24 %>%
+     dplyr::mutate(!!new_varname :=
+           if_else(
+               !is.na(!!sym(i)),     # !! unquotes the variable and tells it to use as object not string 
+               true = "Not missing",
+               false = "Missing"
+           ))
+  
+  items.missing <- c(items.missing, new_varname) # creates a list of these variables 
+}
+
+# rename the general list to W1A specific
+CESD.W24.items.missing <- items.missing
+```
+
+```{r output for missingness CESD.W1A}
+CESD.W24.missing.freq <- map_dfr(CESD.W24.items.missing, ~ freq(dat_outcome24[[.]]) %>% head(1), .id = "Item")
+row.names(CESD.W24.missing.freq) <- NULL
+
+# number of missing for each item 
+CESD.W24.missing.freq
+```
+
+```{r number of items that are missing CESD.W2}
+dat_outcome24 <- dat_outcome24 %>%
+  dplyr::mutate(total_missing_CESD = 
+           rowSums(dplyr::select(., CESD.W24.items.missing) == "Missing")) # sums the number of "missing"s for each person 
+
+freq(dat_outcome24$total_missing_CESD) # number of items individuals have missing
+```
+
+Remove those with more than one item missing for sum score.  
+
+```{r remove those with more than one item missing}
+dat_outcome24 <- dat_outcome24 %>% filter(total_missing_CESD < 2)
+```
+
+```{r create W1 depression score}
+# sum score for CES-D depression
+CESD.scored.items.W24 <- scoreItems(keys = CESD.items.key.W4,
+                                items = dat_outcome24[CESD.W24.items],
+                                totals = TRUE,    # calculate totals
+                                missing = TRUE,   # keep missing items
+                                impute = 'none',  # don't impute missing values
+                                min = 0, 
+                                max = 3)
+
+# add score to data frame
+dat_outcome24 <- dat_outcome24 %>%
+  dplyr::mutate(CESD_W24 = as.numeric(scale(CESD.scored.items.W24$scores))) %>% 
+  dplyr::select(AID, CESD_W24)
+```
+
+### Merge with sibling, sex and age data
+
+```{r merge with age, sex, sibling data}
+dat_outcome2_sex <- inner_join(dat_outcome2, dat_sex)
+dat_outcome2_sex <- dat_outcome2_sex %>% filter(!is.na(BIO_SEX), !is.na(H1GI1Y))
+```
+
+Sib in study responses:
+0 = No
+1 = Yes
+6 = refused
+7 = legitimate skip
+8 = don't know
+9 = Missing
+
+If they say "Yes" or "Don't know" or "missing" they are dropped from the sample for any of the 
+
+```{r remove siblings}
+dat_outcome2_sex <- dat_outcome2_sex %>%
+  filter(
+    (STUDSIBA == 0 | STUDSIBA == 7) &
+    (STUDSIBB == 0 | STUDSIBB == 7) &
+    (STUDSIBC == 0 | STUDSIBC == 7) &
+    (STUDSIBD == 0 | STUDSIBD == 7) &
+    (STUDSIBE == 0 | STUDSIBE == 7) & 
+    (STUDSIBF == 0 | STUDSIBF == 7) & 
+    (STUDSIBG == 0 | STUDSIBG == 7))
+           
+nrow(dat_outcome2_sex)
+```
+
+### Merge with Race 
+
+```{r merge with race}
+dat_outcome2_sex_race <- inner_join(dat_outcome2_sex, dat_race)
+dat_outcome2_sex_race <- dat_outcome2_sex_race %>% filter(!is.na(RACE1))
+nrow(dat_outcome2_sex_race)
+```
+
+### Merge with SES
+
+```{r merge with ses}
+dat_outcome2_sex_race_ses <- inner_join(dat_outcome2_sex_race, dat_ses)
+dat_outcome2_sex_race_ses <- dat_outcome2_sex_race_ses %>% filter(!is.na(SES))
+nrow(dat_outcome2_sex_race_ses)
+```
+
+### Merge with social connection
+
+```{r merge with social connection}
+dat_W2pheno.raw <- inner_join(dat_outcome2_sex_race_ses, dat.social.raw)
+```
+
+Before recoding missingness - need to recode religion variable. 
+Include "No religion" reported as coded 0 rather than missing. 
+
+```{r recode religion}
+dat_W2pheno.raw <- dat_W2pheno.raw %>%
+  dplyr::mutate(
+    H1RE7 = case_when(H1RE7 == 7 ~ 5, TRUE ~ H1RE7) # coded as 5 to be aligned with scale of the variable (4=never)
+  )
+```
+
+Items with missing coded as 96, 97, 98, 99: 
+H1PR2, H1PR3, H1PR5, H1PR4, H1PR1
+
+All the rest have missing coded as 6, 7, 8, 9. 
+  
+```{r cleaning missingness coding}
+dat_W2pheno.raw <- dat_W2pheno.raw %>%
+  dplyr::mutate(across(c(sc_items, -H1PR2, -H1PR3, -H1PR5, -H1PR4, -H1PR1), 
+                ~ case_when(. %in% c(6, 7, 8, 9) ~ NA_real_, 
+                            TRUE ~ .))) %>%
+  dplyr::mutate(across(c(H1PR2, H1PR3, H1PR5, H1PR4, H1PR1), 
+                ~ case_when(. %in% c(96, 97, 98, 99) ~ NA_real_, 
+                            TRUE ~ .))) 
+```
+
+```{r identify variables with high missingness}
+threshold <- 0 # set threshold
+missingvars <- find_vars_with_na(dat_W2pheno.raw, threshold)
+```
+
+#### Variable recoding
+
+Create new vars for gender neutral friend items
+
+ #  "H17A",  # Did you meet X after school to hang out or go somewhere during the past seven days - friend 1, male OR female - TO CREATE
+ #  "H18A",  # Did you spend time with X during the past weekend - friend 1, male OR female - TO CREATE
+ #  "H19A",  # Did you talk to X about a problem during the past seven days - friend 1, male OR female - TO CREATE 
+ #  "H110A", # Did you talk to X on the telephone during the past seven days - friend 1, male OR female - TO CREATE
+
+```{r recode friendship variables to be non sex specific}
+dat_W2pheno.raw <- dat_W2pheno.raw %>%
+  dplyr::mutate(
+    H16A = case_when(H1MF6A == 1 | H1FF6A == 1 ~ 1, TRUE ~ 0),
+    H17A = case_when(H1MF7A == 1 | H1FF7A == 1 ~ 1, TRUE ~ 0),
+    H18A = case_when(H1MF8A == 1 | H1FF8A == 1 ~ 1, TRUE ~ 0),
+    H19A = case_when(H1MF9A == 1 | H1FF9A == 1 ~ 1, TRUE ~ 0),
+    H110A = case_when(H1MF10A == 1 | H1FF10A == 1 ~ 1, TRUE ~ 0)
+  )
+```
+
+Reverse code opposite coded social items. Have now recoded these so that higher responses mean stronger agreement with the item. 
+
+When creating the factor scores, will need to note which items load positively/negatively to infer the direction of the factor score. 
+
+```{r reverse code opposite coded social items}
+reverse_vars <- c("H1ED19", "H1ED20", "H1ED21",
+                  "H1ED22", "H1ED23", "H1ED24",
+                  "H1PF1",  "H1PF4",  "H1PF5",
+                  "H1NB1",  "H1NB2",  "H1NB3",
+                  "H1PF35", "H1PF36", "H1RE7")
+
+dat_W2pheno.raw <- dat_W2pheno.raw %>%
+  dplyr::mutate(across(all_of(reverse_vars), reverse_code))
+
+freq(dat_W2pheno.raw$H1RE7)
+```
+
+#### All social items 
+
+```{r list of social connection items}
+sc_items_all <- c(
+  # school
+  "H1ED19",  # You feel close to the people at your school
+  "H1ED20",  # You feel like you are part of your school
+  "H1ED21",  # Students at your school are prejudiced
+  "H1ED22",  # You are happy to be at your school
+  "H1ED23",  # The teachers at your school treat students fairly
+  "H1ED24",  # You feel safe in your school
+  "H1PR2",   # How much do you feel that your teachers care about you
+  
+  # family
+  "H1WP9",   # How close do you feel to your mother
+  "H1WP10",  # How much do you think your mother cares about you
+  "H1WP13",  # How close do you feel to your father
+  "H1WP14",  # How much do you think your father cares about you
+  "H1PF1",   # Most of the time, your mother is warm and loving towards you
+  "H1PF4",   # You are satisfied with the way your mother and you communicate with each other
+  "H1PF5",   # Overall, you are satisfied with your relationship with your mother
+  "H1PR3",   # How much do you feel that your parents care about you
+  "H1PR5",   # How much do you feel that people in your family understand you
+  
+  # friends
+  "H16A",    # Did you go to X house during the past seven days - male/female friend 1
+  "H17A",    # Did you meet X after school to hang out or go somewhere during the past seven days - male/female friend 1
+  "H18A",    # Did you spend time with X during the past weekend - male/female friend 1
+  "H19A",    # Did you talk to X about a problem during the past seven days - male/female friend 1
+  "H110A",   # Did you talk to X on the telephone during the past seven days - male/female friend 1
+  "H1RR1",   # Have you had a special romantic relationship with any one
+  "H1DA7",   # During the past week, how many times did you just hang out with friends
+  "H1PR4",   # How much do you feel that your friends care about you
+  
+  # neighbourhood
+  "H1NB1",   # You know most of the people in your neighbourhood
+  "H1NB2",   # In the past month, you have stopped on the street to talk with someone who lives in your neighbourhood
+  "H1NB3",   # People in this neighbourhood look out for each other
+  "H1RE7",   # Many places of worship have activities for teenagers, in the past 12 months, how often did you attend such youth activities
+  
+  # general social support and inclusion
+  "H1PF35",  # You feel socially accepted
+  "H1PF36",  # You feel loved and wanted
+  "H1PR1"    # How much do you feel that adults care about you
+)
+```
+
+```{r clean pheno2 dataset}
+dat_W2pheno <- dat_W2pheno.raw %>%
+  dplyr::select(
+    AID,
+    BIO_SEX, 
+    H1GI1Y, 
+    SCID, 
+    RACE1, 
+    SES, 
+    sc_items_all, 
+    CESD_W2
+  )
+
+head(dat_W2pheno)
+```
+
+### Imputation 
+
+```{r missing values for clean dataset}
+find_vars_with_na(dat_W2pheno, threshold)
+
+# transfer dataset to fresh imputation dataset
+dat_W2pheno_imp <- dat_W2pheno
+```
+
+Complete data:
+* sex
+* SES
+* Race
+* Outcome
+
+Incomplete data: 
+* binary social variables
+* ordinal social variables 
+
+Need to create squared parameter for continuous variables
+
+#### Binary variables
+
+Random imputation for binary variables. 
+
+```{r check which are binary}
+binary_check <- sapply(sc_items_all, function(var) is_binary(dat_W2pheno_imp[[var]]))
+binary_vars <- names(binary_check)[binary_check] # select those with TRUE to being binary
+binary_vars
+```
+
+```{r impute binary variables}
+for (var in binary_vars) {
+  prob <- mean(dat_W2pheno_imp[[var]], na.rm = TRUE)
+  na_idx <- which(is.na(dat_W2pheno_imp[[var]]))
+  n_missing <- length(na_idx)
+  
+  imputed_values <- rbinom(n_missing, size = 1, prob = prob)
+  
+  # copy original to new column
+  dat_W2pheno_imp[[paste0(var)]] <- dat_W2pheno_imp[[var]]
+  
+  # replace only missing values
+  dat_W2pheno_imp[[paste0(var)]][na_idx] <- imputed_values
+}
+```
+
+#### Ordinal variables
+
+```{r select and recode order for ordinal variables}
+# create list of ordinal variables
+ord_vars <- names(dat_W2pheno_imp[sc_items_all] %>% dplyr::select(-binary_vars))
+
+# create a loop to show the levels in each variable
+for (var in ord_vars) {
+  cat(paste0("Variable: ", var, "\n"))
+  print(sort(unique(dat_W2pheno_imp[[var]])))
+  cat("\n")
+}
+
+# make sure that each of them are factors with those levels
+dat_W2pheno_imp[ord_vars] <- lapply(dat_W2pheno_imp[ord_vars], function(x) {
+  ordered(x, levels = sort(unique(x)))
+})
+```
+
+MICE imputation for ordered variables
+
+```{r mice imputation}
+# Define methods: use "" (empty string) for variables you don't want to impute
+meth <- make.method(dat_W2pheno_imp)
+meth[ord_vars] <- "polr"  # specify the ordinal variable
+
+# check and define predictor matrix
+pred <- make.predictorMatrix(dat_W2pheno_imp)
+
+# run MICE with polr for ordinal imputation
+mice_imp <- mice(dat_W2pheno_imp, m = 1, # only one imputed dataset will be generated and it will do 5 iterations
+                        method = meth, 
+                        predictorMatrix = pred, 
+                        seed = 123)
+
+dat_W2pheno_imp <- complete(mice_imp, action = "long")  # stacked format
+find_vars_with_na(dat_W2pheno_imp, threshold)
+nrow(dat_W2pheno_imp)
+dat_W2pheno_imp <- dat_W2pheno_imp %>% dplyr::select(-.imp, -.id)
+```
+
+No more missing variables (yay!) **N = 9,987**
+
+****
+
+## W4 outcome
+
+```{r cleaning missingness coding}
+dat_outcome4 <- dat_outcome4.raw %>%
+  dplyr::mutate(across(c(CESD.W4.items), 
+                ~ case_when(. %in% c(6, 7, 8, 9) ~ NA_real_, 
+                            TRUE ~ .))) 
+```
+
+```{r loop for missingness of depression items}
+items.missing <- c()
+
+for (i in CESD.W4.items) {
+  
+  new_varname <- paste0(i, "_missing")
+  
+  dat_outcome4 <- dat_outcome4 %>%
+     dplyr::mutate(!!new_varname :=
+           if_else(
+               !is.na(!!sym(i)),     # !! unquotes the variable and tells it to use as object not string 
+               true = "Not missing",
+               false = "Missing"
+           ))
+  
+  items.missing <- c(items.missing, new_varname) # creates a list of these variables 
+}
+
+# rename the general list to W1A specific
+CESD.W4.items.missing <- items.missing
+```
+
+```{r output for missingness CESD.W1A}
+CESD.W4.missing.freq <- map_dfr(CESD.W4.items.missing, ~ freq(dat_outcome4[[.]]) %>% head(1), .id = "Item")
+row.names(CESD.W4.missing.freq) <- NULL
+
+# number of missing for each item 
+CESD.W4.missing.freq
+```
+
+```{r number of items that are missing CESD.W4}
+dat_outcome4 <- dat_outcome4 %>%
+  dplyr::mutate(total_missing_CESD = 
+           rowSums(dplyr::select(., CESD.W4.items.missing) == "Missing")) # sums the number of "missing"s for each person 
+
+freq(dat_outcome4$total_missing_CESD) # number of items individuals have missing
+```
+
+Remove those with more than one item missing for sum score.  
+
+```{r remove those with more than one item missing}
+dat_outcome4 <- dat_outcome4 %>% filter(total_missing_CESD < 2)
+```
+
+### Create sum score 
+
+```{r create W1 depression score}
+# sum score for CES-D depression W1A
+CESD.scored.items.W4 <- scoreItems(keys = CESD.items.key.W4,
+                                items = dat_outcome4[CESD.W4.items],
+                                totals = TRUE,    # calculate totals
+                                missing = TRUE,   # keep missing items
+                                impute = 'none',  # don't impute missing values
+                                min = 0, 
+                                max = 3)
+
+# add score to data frame
+dat_outcome4 <- dat_outcome4 %>%
+  dplyr::mutate(CESD_W4 = as.numeric(scale(CESD.scored.items.W4$scores)))%>%
+  dplyr::mutate(CESD_W4_notscaled = as.numeric(CESD.scored.items.W4$scores))
+
+# standard deviation of nonsclaed score 
+sd(dat_outcome4$CESD_W4_notscaled)
+```
+
+*CESD_W4* is the scaled sum score for depression at wave 2. 
+
+### Merge with sibling, sex and age data
+
+```{r merge with age, sex, sibling data}
+dat_outcome4_sex <- inner_join(dat_outcome4, dat_sex)
+dat_outcome4_sex <- dat_outcome4_sex %>% filter(!is.na(BIO_SEX), !is.na(H1GI1Y))
+```
+
+Sib in study responses:
+0 = No
+1 = Yes
+6 = refused
+7 = legitimate skip
+8 = don't know
+9 = Missing
+
+If they say "Yes" or "Don't know" or "missing" they are dropped from the sample for any of the 
+
+```{r remove siblings}
+dat_outcome4_sex <- dat_outcome4_sex %>%
+  filter(
+    (STUDSIBA == 0 | STUDSIBA == 7) &
+    (STUDSIBB == 0 | STUDSIBB == 7) &
+    (STUDSIBC == 0 | STUDSIBC == 7) &
+    (STUDSIBD == 0 | STUDSIBD == 7) &
+    (STUDSIBE == 0 | STUDSIBE == 7) & 
+    (STUDSIBF == 0 | STUDSIBF == 7) & 
+    (STUDSIBG == 0 | STUDSIBG == 7))
+           
+nrow(dat_outcome4_sex)
+```
+
+### Merge with Race 
+
+```{r merge with race}
+dat_outcome4_sex_race <- inner_join(dat_outcome4_sex, dat_race)
+dat_outcome4_sex_race <- dat_outcome4_sex_race %>% filter(!is.na(RACE1))
+nrow(dat_outcome4_sex_race)
+```
+
+### Merge with SES
+
+```{r merge with ses}
+dat_outcome4_sex_race_ses <- inner_join(dat_outcome4_sex_race, dat_ses)
+dat_outcome4_sex_race_ses <- dat_outcome4_sex_race_ses %>% filter(!is.na(SES))
+nrow(dat_outcome4_sex_race_ses)
+
+dat_W4pheno <- dat_outcome4_sex_race_ses 
+```
+
+### Merge with social connection
+
+```{r merge with social connection}
+dat_W4pheno.raw <- inner_join(dat_outcome4_sex_race_ses, dat.social.raw)
+```
+
+Before recoding missingness - need to recode religion variable. 
+Include "No religion" reported as coded 0 rather than missing. 
+
+```{r recode religion}
+dat_W4pheno.raw <- dat_W4pheno.raw %>%
+  dplyr::mutate(
+    H1RE7 = case_when(H1RE7 == 7 ~ 5, TRUE ~ H1RE7) # coded as 5 to be aligned with scale of the variable (4=never)
+  )
+```
+
+Items with missing coded as 96, 97, 98, 99: 
+H1PR2, H1PR3, H1PR5, H1PR4, H1PR1
+
+All the rest have missing coded as 6, 7, 8, 9. 
+  
+```{r cleaning missingness coding}
+dat_W4pheno.raw <- dat_W4pheno.raw %>%
+  dplyr::mutate(across(c(sc_items, -H1PR2, -H1PR3, -H1PR5, -H1PR4, -H1PR1), 
+                ~ case_when(. %in% c(6, 7, 8, 9) ~ NA_real_, 
+                            TRUE ~ .))) %>%
+  dplyr::mutate(across(c(H1PR2, H1PR3, H1PR5, H1PR4, H1PR1), 
+                ~ case_when(. %in% c(96, 97, 98, 99) ~ NA_real_, 
+                            TRUE ~ .))) 
+```
+
+```{r identify variables with high missingness}
+threshold <- 0 # set threshold
+missingvars <- find_vars_with_na(dat_W4pheno.raw, threshold)
+```
+
+#### Variable recoding
+
+Create new vars for gender neutral friend items
+
+ #  "H17A",  # Did you meet X after school to hang out or go somewhere during the past seven days - friend 1, male OR female - TO CREATE
+ #  "H18A",  # Did you spend time with X during the past weekend - friend 1, male OR female - TO CREATE
+ #  "H19A",  # Did you talk to X about a problem during the past seven days - friend 1, male OR female - TO CREATE 
+ #  "H110A", # Did you talk to X on the telephone during the past seven days - friend 1, male OR female - TO CREATE
+
+```{r recode friendship variables to be non sex specific}
+dat_W4pheno.raw <- dat_W4pheno.raw %>%
+  dplyr::mutate(
+    H16A = case_when(H1MF6A == 1 | H1FF6A == 1 ~ 1, TRUE ~ 0),
+    H17A = case_when(H1MF7A == 1 | H1FF7A == 1 ~ 1, TRUE ~ 0),
+    H18A = case_when(H1MF8A == 1 | H1FF8A == 1 ~ 1, TRUE ~ 0),
+    H19A = case_when(H1MF9A == 1 | H1FF9A == 1 ~ 1, TRUE ~ 0),
+    H110A = case_when(H1MF10A == 1 | H1FF10A == 1 ~ 1, TRUE ~ 0)
+  )
+```
+
+Reverse code opposite coded social items. Have now recoded these so that higher responses mean stronger agreement with the item. 
+
+When creating the factor scores, will need to note which items load positively/negatively to infer the direction of the factor score. 
+
+For item H1ED21 "Students in your school are prejudice" 1 = strong agree, 5 = strong disagree. When this is flipped then higher score = agreement with the prejudice. 
+
+```{r reverse code opposite coded social items}
+reverse_vars <- c("H1ED19", "H1ED20", "H1ED21",
+                  "H1ED22", "H1ED23", "H1ED24",
+                  "H1PF1",  "H1PF4",  "H1PF5",
+                  "H1NB1",  "H1NB2",  "H1NB3",
+                  "H1PF35", "H1PF36", "H1RE7")
+
+dat_W4pheno.raw <- dat_W4pheno.raw %>%
+  dplyr::mutate(across(all_of(reverse_vars), reverse_code))
+```
+
+#### All social items 
+
+```{r list of social connection items}
+sc_items_all <- c(
+  # school
+  "H1ED19",  # You feel close to the people at your school
+  "H1ED20",  # You feel like you are part of your school
+  "H1ED21",  # Students at your school are prejudiced
+  "H1ED22",  # You are happy to be at your school
+  "H1ED23",  # The teachers at your school treat students fairly
+  "H1ED24",  # You feel safe in your school
+  "H1PR2",   # How much do you feel that your teachers care about you
+  
+  # family
+  "H1WP9",   # How close do you feel to your mother
+  "H1WP10",  # How much do you think your mother cares about you
+  "H1WP13",  # How close do you feel to your father
+  "H1WP14",  # How much do you think your father cares about you
+  "H1PF1",   # Most of the time, your mother is warm and loving towards you
+  "H1PF4",   # You are satisfied with the way your mother and you communicate with each other
+  "H1PF5",   # Overall, you are satisfied with your relationship with your mother
+  "H1PR3",   # How much do you feel that your parents care about you
+  "H1PR5",   # How much do you feel that people in your family understand you
+  
+  # friends
+  "H16A",    # Did you go to X house during the past seven days - male/female friend 1
+  "H17A",    # Did you meet X after school to hang out or go somewhere during the past seven days - male/female friend 1
+  "H18A",    # Did you spend time with X during the past weekend - male/female friend 1
+  "H19A",    # Did you talk to X about a problem during the past seven days - male/female friend 1
+  "H110A",   # Did you talk to X on the telephone during the past seven days - male/female friend 1
+  "H1RR1",   # Have you had a special romantic relationship with any one
+  "H1DA7",   # During the past week, how many times did you just hang out with friends
+  "H1PR4",   # How much do you feel that your friends care about you
+  
+  # neighbourhood
+  "H1NB1",   # You know most of the people in your neighbourhood
+  "H1NB2",   # In the past month, you have stopped on the street to talk with someone who lives in your neighbourhood
+  "H1NB3",   # People in this neighbourhood look out for each other
+  "H1RE7",   # Many places of worship have activities for teenagers, in the past 12 months, how often did you attend such youth activities
+  
+  # general social support and inclusion
+  "H1PF35",  # You feel socially accepted
+  "H1PF36",  # You feel loved and wanted
+  "H1PR1"    # How much do you feel that adults care about you
+)
+```
+
+```{r clean pheno4 dataset}
+dat_W4pheno <- dat_W4pheno.raw %>%
+  dplyr::select(
+    AID,
+    BIO_SEX, 
+    H1GI1Y, 
+    SCID, 
+    RACE1, 
+    SES, 
+    sc_items_all, 
+    CESD_W4
+  )
+
+head(dat_W4pheno)
+```
+
+### Imputation 
+
+```{r missing values for clean dataset}
+find_vars_with_na(dat_W4pheno, threshold)
+
+# transfer dataset to fresh imputation dataset
+dat_W4pheno_imp <- dat_W4pheno
+```
+
+Complete data:
+* sex
+* SES
+* Race
+* Outcome
+
+Incomplete data: 
+* binary social variables
+* ordinal social variables 
+
+Need to create squared parameter for continuous variables
+
+#### Binary variables
+
+Random imputation for binary variables. 
+
+```{r check which are binary}
+binary_check <- sapply(sc_items_all, function(var) is_binary(dat_W4pheno_imp[[var]]))
+binary_vars <- names(binary_check)[binary_check] # select those with TRUE to being binary
+binary_vars
+```
+
+```{r impute binary variables}
+for (var in binary_vars) {
+  prob <- mean(dat_W4pheno_imp[[var]], na.rm = TRUE)
+  na_idx <- which(is.na(dat_W4pheno_imp[[var]]))
+  n_missing <- length(na_idx)
+  
+  imputed_values <- rbinom(n_missing, size = 1, prob = prob)
+  
+  # copy original to new column
+  dat_W4pheno_imp[[paste0(var)]] <- dat_W4pheno_imp[[var]]
+  
+  # replace only missing values
+  dat_W4pheno_imp[[paste0(var)]][na_idx] <- imputed_values
+}
+```
+
+#### Ordinal variables
+
+```{r select and recode order for ordinal variables}
+# create list of ordinal variables
+ord_vars <- names(dat_W4pheno_imp[sc_items_all] %>% dplyr::select(-binary_vars))
+
+# create a loop to show the levels in each variable
+for (var in ord_vars) {
+  cat(paste0("Variable: ", var, "\n"))
+  print(sort(unique(dat_W4pheno_imp[[var]])))
+  cat("\n")
+}
+
+# make sure that each of them are factors with those levels
+dat_W4pheno_imp[ord_vars] <- lapply(dat_W4pheno_imp[ord_vars], function(x) {
+  ordered(x, levels = sort(unique(x)))
+})
+```
+
+MICE imputation for ordered variables
+
+```{r mice imputation}
+# Define methods: use "" (empty string) for variables you don't want to impute
+meth <- make.method(dat_W4pheno_imp)
+meth[ord_vars] <- "polr"  # specify the ordinal variable
+
+# check and define predictor matrix
+pred <- make.predictorMatrix(dat_W4pheno_imp)
+
+# run MICE with polr for ordinal imputation
+mice_imp <- mice(dat_W4pheno_imp, m = 1, # only one imputed dataset will be generated and it will do 5 iterations
+                        method = meth, 
+                        predictorMatrix = pred, 
+                        seed = 123)
+
+dat_W4pheno_imp <- complete(mice_imp, action = "long")  # stacked format
+find_vars_with_na(dat_W4pheno_imp, threshold)
+nrow(dat_W4pheno_imp)
+dat_W4pheno_imp <- dat_W4pheno_imp %>% dplyr::select(-.imp, -.id)
+```
+
+No more missing variables (yay!) **N = 11,139**
+
+Now we have two outcome datasets: dat_W2pheno_imp and dat_W4pheno_imp that can be used going forward. 
+
+****
+
+# Item-level sensitivity analysis prep
+
+## Binary recode
+
+We want to create binary versions of all likert scales in order to aid interpretation of the counterfactual models.
+
+We will score anyone that reports "Agree" or the equivalent or stronger (e.g "strongly agree") as 1. This can then be interpreted as they did expereince the positive social variable. All other coding (including neutral will be coded as 0). 
+
+We already have some binary variables 
+
+```{r lists of types of variables}
+ord_vars
+reverse_vars
+binary_vars
+sc_items_all
+```
+
+Ordinal variables that are coded with the following scale: 
+Strongly agree = 5
+Agree = 4
+Neither = 3
+Disagree = 2
+Strongly disagree = 1
+
+H1ED19, H1ED20, H1ED21, H1ED22, H1ED23, H1ED24, H1PF1, H1PF4, H1PF5, H1PF35, H1PF36
+
+Ordinal variables that are coded with the following scale: 
+Very much = 5
+Quite a bit = 4
+Somewhat = 3
+Very little = 2
+Not at all = 1
+
+H1PR2, H1WP9, H1WP10, H1WP13, H1WP14, H1PR3, H1PR5, H1PR4, H1PR1
+
+*For these variables, 4 and 5 can be coded as "1" or "agree" or "present", and the rest as 0.*
+
+```{r recode ord vars 4/5}
+ordvars_45 <- c("H1ED19", "H1ED20", "H1ED21", "H1ED22", "H1ED23", "H1ED24", "H1PF1", "H1PF4", "H1PF5", "H1PF35", "H1PF36",
+                "H1PR2", "H1WP9", "H1WP10", "H1WP13", "H1WP14", "H1PR3", "H1PR5", "H1PR4", "H1PR1")
+
+dat_W2pheno_imp_bin <- dat_W2pheno_imp %>%
+  dplyr::mutate(
+    across(ordvars_45, 
+           ~ case_when(. %in% c(4, 5) ~ 1,
+                       TRUE ~ 0))
+  )
+
+dat_W4pheno_imp_bin <- dat_W4pheno_imp %>%
+  dplyr::mutate(
+    across(ordvars_45, 
+           ~ case_when(. %in% c(4, 5) ~ 1,
+                       TRUE ~ 0))
+  )
+```
+
+Ordinal variables that are coded with the following scale: 
+5 or more times = 3
+3 or 4 times = 2
+1 or 2 times = 1
+Not at all = 0
+
+H1DA7
+
+*For this variable, 1, 2, and 3 can be coded as "1" or "agree" or "present", and the rest as 0.*
+
+```{r recode ord var H1DA7}
+dat_W2pheno_imp_bin <- dat_W2pheno_imp_bin %>%
+  dplyr::mutate(
+    H1DA7 = case_when(H1DA7 == 0 ~ 0,
+                       TRUE ~ 1))
+
+dat_W4pheno_imp_bin <- dat_W4pheno_imp_bin %>%
+  dplyr::mutate(
+    H1DA7 = case_when(H1DA7 == 0 ~ 0,
+                       TRUE ~ 1))
+```
+
+Ordinal variables that are coded with the following scale: 
+once a week or more = 5
+once a month or more, but less than once a week = 4
+Less than once a month = 3
+Never = 2
+Not religious = 1
+
+H1RE7
+
+*For this variable, 5, 4, and 3 can be coded as "1" or "agree" or "present", and the rest as 0.*
+
+```{r recode ord var H1RE7}
+dat_W2pheno_imp_bin <- dat_W2pheno_imp_bin %>%
+  dplyr::mutate(
+    H1RE7 = case_when(H1RE7 == 5 ~ 1,
+                      H1RE7 == 4 ~ 1,
+                      H1RE7 == 3 ~ 1,
+                       TRUE ~ 0))
+
+dat_W4pheno_imp_bin <- dat_W4pheno_imp_bin %>%
+  dplyr::mutate(
+    H1RE7 = case_when(H1RE7 == 5 ~ 1,
+                      H1RE7 == 4 ~ 1,
+                      H1RE7 == 3 ~ 1,
+                       TRUE ~ 0))
+```
+
+Change 1 and 2 coding to 0 and 1. 
+
+H1NB1, H1NB2, H1NB3 
+
+```{r recode ord var H1RE7}
+dat_W2pheno_imp_bin <- dat_W2pheno_imp_bin %>%
+  dplyr::mutate(
+    across(c("H1NB1", "H1NB2", "H1NB3"), 
+           ~ case_when(. %in% 1 ~ 1, # 1 is true and 2 is false in original coding
+                       TRUE ~ 0))
+  )
+
+dat_W4pheno_imp_bin <- dat_W4pheno_imp_bin %>%
+  dplyr::mutate(
+    across(c("H1NB1", "H1NB2", "H1NB3"), 
+           ~ case_when(. %in% 1 ~ 1, # 1 is true and 2 is false in original coding
+                       TRUE ~ 0))
+  )
+```
+
+*Export is given at end of script*
+
+****
+
+# Factor analysis
+
+I have conducted this separately for both data sets as there are slightly different people in each and I want the score to reflect the variance in each dataset. 
+
+First I create a renaming function to see what each variable is in the factor analyses. 
+
+## Rename variables for interpretation
+
+```{r rename variables for fa}
+# Define the original variable names and their descriptions (from your comment structure)
+var_descriptions <- tibble::tribble(
+  ~old_name, ~description,
+  "H1ED19",  "You feel close to the people at your school",
+  "H1ED20",  "You feel like you are part of your school",
+  "H1ED21",  "Students at your school are prejudiced",
+  "H1ED22",  "You are happy to be at your school",
+  "H1ED23",  "The teachers at your school treat students fairly",
+  "H1ED24",  "You feel safe in your school",
+  "H1PR2",   "How much do you feel that your teachers care about you",
+  "H1WP9",   "How close do you feel to your mother",
+  "H1WP10",  "How much do you think your mother cares about you",
+  "H1WP13",  "How close do you feel to your father",
+  "H1WP14",  "How much do you think your father cares about you",
+  "H1PF1",   "Most of the time, your mother is warm and loving towards you",
+  "H1PF4",   "You are satisfied with the way your mother and you communicate with each other",
+  "H1PF5",   "Overall, you are satisfied with your relationship with your mother",
+  "H1PR3",   "How much do you feel that your parents care about you",
+  "H1PR5",   "How much do you feel that people in your family understand you",
+  "H16A",    "Did you go to X house during the past seven days",
+  "H17A",    "Did you meet X after school to hang out or go somewhere during the past seven days",
+  "H18A",    "Did you spend time with X during the past weekend",
+  "H19A",    "Did you talk to X about a problem during the past seven days",
+  "H110A",   "Did you talk to X on the telephone during the past seven days",
+  "H1RR1",   "Have you had a special romantic relationship with any one",
+  "H1DA7",   "During the past week, how many times did you just hang out with friends",
+  "H1PR4",   "How much do you feel that your friends care about you",
+  "H1NB1",   "You know most of the people in your neighbourhood",
+  "H1NB2",   "In the past month, you have stopped on the street to talk with someone who lives in your neighbourhood",
+  "H1NB3",   "People in this neighbourhood look out for each other",
+  "H1RE7",   "Many places of worship have activities for teenagers, in the past 12 months, how often did you attend such youth activities",
+  "H1PF35",  "You feel socially accepted",
+  "H1PF36",  "You feel loved and wanted",
+  "H1PR1",   "How much do you feel that adults care about you"
+)
+
+var_descriptions <- var_descriptions %>%
+  dplyr::mutate(new_name = shorten_description(description))
+rename_map <- setNames(var_descriptions$new_name, var_descriptions$old_name)
+```
+
+## Data prep
+
+### Create factor analysis dataset
+
+```{r create factor analysis dataset}
+# W2
+dat_fa_W2 <- dat_W2pheno_imp %>% 
+  dplyr::select(sc_items_all) %>% # select items only
+  rename_with(~ rename_map[.], .cols = all_of(names(rename_map))) # rename the items
+
+# check 
+colnames(dat_fa_W2)
+
+# W4
+dat_fa_W4 <- dat_W4pheno_imp %>% 
+  dplyr::select(sc_items_all) %>% # select items only
+  rename_with(~ rename_map[.], .cols = all_of(names(rename_map))) # rename the items
+
+# check 
+colnames(dat_fa_W4)
+```
+
+# EFA
+
+## Check data format
+
+```{r efa variable check W2}
+# check the formats of the data
+check_variable_formats(dat_fa_W2) 
+
+# convert all to numeric
+dat_fa_W2_numeric <- dat_fa_W2 %>%
+  dplyr::mutate(across(everything(), ~ as.numeric(as.character(.))))
+
+# check the formats of the data
+check_variable_formats(dat_fa_W2_numeric) 
+```
+
+```{r efa variable check W4}
+# check the formats of the data
+check_variable_formats(dat_fa_W4) 
+
+# convert all to numeric
+dat_fa_W4_numeric <- dat_fa_W4 %>%
+  dplyr::mutate(across(everything(), ~ as.numeric(as.character(.))))
+
+# check the formats of the data
+check_variable_formats(dat_fa_W4_numeric) 
+```
+
+Split the data into training and testing and save the data
+
+```{r split the data}
+# Wave 2
+n_total <- nrow(dat_fa_W2_numeric)
+train_idx <- sample(seq_len(n_total), size = round(0.7 * n_total))
+dat_train_W2 <- dat_fa_W2_numeric[train_idx, ]
+dat_test_W2  <- dat_fa_W2_numeric[-train_idx, ]
+
+# Wave 4
+n_total <- nrow(dat_fa_W4_numeric)
+train_idx <- sample(seq_len(n_total), size = round(0.7 * n_total))
+dat_train_W4 <- dat_fa_W4_numeric[train_idx, ]
+dat_test_W4  <- dat_fa_W4_numeric[-train_idx, ]
+```
+
+```{r save efa data to rossmann}
+# save this to rossmann 
+saveRDS(dat_train_W2, file = "/project/rche/data/datasets/addhealth/scratch/kthompson/healthdis/efa/W2/dat_fa_W2.rds")
+saveRDS(dat_train_W4, file = "/project/rche/data/datasets/addhealth/scratch/kthompson/healthdis/efa/W4/dat_fa_W4.rds")
+```
+
+## Run efa script 
+
+**Run the script /home/thom1336/healthdis/efa/efa_rossmann.txt**
+
+This runs efa for 1-10 factor models in the data for W2 and W4. 
+
+## Output 
+
+### Polychoric correlation matrices
+
+```{r read in cor matrix}
+polycor_matrix_W2 <- readRDS("/project/rche/data/datasets/addhealth/scratch/kthompson/healthdis/efa/W2/polycor_matrix_W2.rds")
+polycor_matrix_W4 <- readRDS("/project/rche/data/datasets/addhealth/scratch/kthompson/healthdis/efa/W4/polycor_matrix_W4.rds")
+```
+
+```{r cor heat map W2}
+cor_matrix_full_W2 <- reorder_cor_matrix(polycor_matrix_W2$correlations) 
+  
+# melt the values
+metled_cor_matrix_W2 <- reshape2::melt(cor_matrix_full_W2, na.rm = TRUE)
+
+# correlation heat map
+correlation_heat_map_W2 <- ggplot(metled_cor_matrix_W2, aes(Var2, Var1, fill = value)) +
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white",
+   midpoint = 0, limit = c(-1,1), space = "Lab",
+    name="Polychoric\nCorrelation") +
+  theme_minimal() +
+  labs(y = "Items",
+       x = "Items",
+       title = "Correlation heat map for social variables",
+       subtitle = paste("N (Total) = ", nrow(dat_fa_W2), sep = "")) +
+ theme(axis.text.x = element_text(angle = 45, vjust = 1,
+    size = 14, hjust = 1))+
+ coord_fixed() +
+  geom_text(aes(Var2, Var1, label = round(value, digits = 2)), color = "black", size = 3)
+
+save_gg_cairo(correlation_heat_map_W2, filename = "/home/thom1336/healthdis/figures/fa/heatmap_polychor_W2.png", height = 2000, width = 2000)
+```
+
+```{r cor heat map W4}
+cor_matrix_full_W4 <- reorder_cor_matrix(polycor_matrix_W4$correlations) 
+  
+# melt the values
+metled_cor_matrix_W4 <- reshape2::melt(cor_matrix_full_W4, na.rm = TRUE)
+
+# correlation heat map
+correlation_heat_map_W4 <- ggplot(metled_cor_matrix_W4, aes(Var2, Var1, fill = value)) +
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white",
+   midpoint = 0, limit = c(-1,1), space = "Lab",
+    name="Polychoric\nCorrelation") +
+  theme_minimal() +
+  labs(y = "Items",
+       x = "Items",
+       title = "Correlation heat map for social variables",
+       subtitle = paste("N (Total) = ", nrow(dat_fa_W4), sep = "")) +
+ theme(axis.text.x = element_text(angle = 45, vjust = 1,
+    size = 14, hjust = 1))+
+ coord_fixed() +
+  geom_text(aes(Var2, Var1, label = round(value, digits = 2)), color = "black", size = 3)
+
+save_gg_cairo(correlation_heat_map_W4, filename = "/home/thom1336/healthdis/figures/fa/heatmap_polychor_W4.png", height = 2000, width = 2000)
+```
+
+### Model fit 
+
+```{r output for all efa models}
+outcome <- c(2, 4) # Waves 2 and 4
+num_factors <- 10
+
+# Outer loop for the matrices (waves)
+for (outcome_num in outcome) {
+  # Inner loop for the factor models
+  for (factor_num in 1:num_factors) {
+    # Construct the file path dynamically
+    rds_file <- paste0("/project/rche/data/datasets/addhealth/scratch/kthompson/healthdis/efa/W", 
+                       outcome_num, 
+                       "/polycor_W", 
+                       outcome_num, 
+                       ".efa.fit", 
+                       factor_num, 
+                       ".rds")
+    
+    # Read the RDS file
+    efa_fit <- readRDS(rds_file)
+    
+    # Print the fit information
+    cat("\nMatrix", outcome_num, "- Factor Model", factor_num, "\n")
+    print(paste0("RMSEA:", efa_fit$RMSEA))
+    print(paste0("TLI:", efa_fit$TLI))
+    print(paste0("CFI:", efa_fit$CFI))
+    print(paste0("BIC:", efa_fit$BIC))
+    print(paste0("crms:", efa_fit$crms))
+    
+    # Define the output file path for the plot
+    output_file <- paste0("/home/thom1336/healthdis/figures/fa/efa_matrix_W",
+                          outcome_num, 
+                          "_factor", 
+                          factor_num, 
+                          ".png")
+    
+    output_file_rds <- paste0("/home/thom1336/healthdis/figures/fa/efa_matrix_W",
+                          outcome_num, 
+                          "_factor", 
+                          factor_num, 
+                          ".rds")
+    
+    # Save the data for the plot 
+    saveRDS(efa_fit, file = output_file_rds)
+    
+    # Create the plot
+    create_efa_plot(efa_fit = efa_fit, output_file = output_file)
+  }
+}
+```
+
+Fit criteria:
+RMSEA (≤ 0.06) 
+TLI (≥ 0.95) 
+CLI (≥ 0.95)
+BIC (small = better fit)
+SRMR (≤ 0.08)
+
+Five factor models across the two outcome groups: 
+
+Matrix 2 - Factor Model 5 
+[1] "RMSEA:0.074524061473114"  "RMSEA:0.0736056483333156" "RMSEA:0.0754541898896486" "RMSEA:0.9"               
+[1] "TLI:0.697960883706437"
+[1] "CFI:0.792214962149824"
+[1] "BIC:15122.3098028282"
+[1] "crms:0.0497346178459635"
+
+Matrix 4 - Factor Model 5 
+[1] "RMSEA:0.0755546587985943" "RMSEA:0.0746852592679963" "RMSEA:0.0764345993037997" "RMSEA:0.9"               
+[1] "TLI:0.697363420636573"
+[1] "CFI:0.791796655272386"
+[1] "BIC:17686.0593813026"
+[1] "crms:0.049959853398429"
+
+The 5 factor model is consistent across outcome groups, has the minimal amount of factors with one item only and is most interpretable into domains.  
+
+```{r pull fit info into a table}
+fit_stats_tbl <- map_dfr(outcome, function(w) {
+  map_dfr(1:num_factors, function(nf) {
+    rds_file <- paste0("/project/rche/data/datasets/addhealth/scratch/kthompson/healthdis/efa/W",
+                       w, "/polycor_W", w, ".efa.fit", nf, ".rds")
+    efa_fit <- readRDS(rds_file)
+
+    tibble(
+      wave        = w,
+      nfactors    = nf,
+      RMSEA       = round(efa_fit$RMSEA[1], 4),
+      RMSEA_lower = round(efa_fit$RMSEA[2], 4),
+      RMSEA_upper = round(efa_fit$RMSEA[3], 4),
+   #   RMSEA_p05   = round(efa_fit$RMSEA[4], 4),
+      TLI         = round(efa_fit$TLI, 4),
+      CFI         = round(efa_fit$CFI, 4),
+      BIC         = round(efa_fit$BIC, 4),
+      crms        = round(efa_fit$crms, 4)
+    )
+  })
+})
+
+fit_stats_tbl
+```
+
+```{r 5 factor stats}
+efa_fit_5_W2 <- readRDS("/project/rche/data/datasets/addhealth/scratch/kthompson/healthdis/efa/W2/polycor_W2.efa.fit5.rds")
+efa_fit_5_W4 <- readRDS("/project/rche/data/datasets/addhealth/scratch/kthompson/healthdis/efa/W4/polycor_W4.efa.fit5.rds")
+```
+
+# CFA: 5 factors
+
+## Specify model
+
+```{r define cfa model based on 5 factor efa}
+cfa5 <-       'family =~ 
+              think_mother_cares_about + 
+              think_father_cares_about + 
+              people_in_family_understand +
+              parents_care_about +
+              overall_are_satisfied_with_relationship_with_mother +
+              most_of_time_mother_is_warm_and_loving_towards + 
+              loved_and_wanted +
+              how_close_to_mother +
+              how_close_to_father +
+              are_satisfied_with_way_mother_and_communicate_with_each_other +
+              adults_care_about 
+              
+              school =~
+              the_teachers_at_school_treat_students_fairly +
+              teachers_care_about +
+              students_at_school_are_prejudiced +
+              socially_accepted +
+              safe_in_school + 
+              like_are_part_of_school +
+              close_to_people_at_school +
+              are_happy_to_be_at_school 
+              
+              friends =~
+              have_had_a_special_romantic_relationship_with_any_one +
+              friends_care_about +
+              during_past_week_how_many_times_just_hang_out_with_friends +
+              did_talk_to_x_on_telephone_during_past_seven_days +
+              did_talk_to_x_about_a_problem_during_past_seven_days +
+              did_spend_time_with_x_during_past_weekend +
+              did_meet_x_after_school_to_hang_out_or_go_somewhere_during_past_seven_days +
+              did_go_to_x_house_during_past_seven_days 
+              
+              neigh =~
+              people_in_neighbourhood_look_out_for_each_other +
+              know_most_of_people_in_neighbourhood +
+              in_past_month_have_stopped_on_street_to_talk_with_someone_who_lives_in_neighbourhood
+              
+              religion =~
+              many_places_of_worship_have_activities_for_teenagers_in_past_12_months_how_often_attend_such_youth_activities
+           
+              social =~ family + school + friends + neigh + religion
+              
+              '
+```
+
+## Output 
+
+```{r map names to main dataset}
+# W2
+dat_fa_full_W2 <- dat_W2pheno_imp %>% 
+  rename_with(~ rename_map[.], .cols = all_of(names(rename_map))) %>% # rename the items
+  dplyr::mutate(across(everything(), ~ as.numeric(as.character(.))))
+
+# W4
+dat_fa_full_W4 <- dat_W4pheno_imp %>% 
+  rename_with(~ rename_map[.], .cols = all_of(names(rename_map))) %>% # rename the items
+  dplyr::mutate(across(everything(), ~ as.numeric(as.character(.))))
+```
+
+Testing the model in the remaining 30%. 
+
+```{r cfa output}
+# W2
+cfa5_W2_test.fit <- cfa(cfa5, estimator = "WLSMV", data = dat_test_W2)
+summary(cfa5_W2_test.fit, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+
+# W4
+cfa5_W4_test.fit <- cfa(cfa5, estimator = "WLSMV", data = dat_test_W4)
+summary(cfa5_W4_test.fit, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+```
+
+## Factor scores
+
+Apply this to the full sample. 
+
+```{r cfa output}
+# W2
+cfa5_W2.fit <- cfa(cfa5, estimator = "WLSMV", data = dat_fa_full_W2)
+summary(cfa5_W2.fit, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+
+# W4
+cfa5_W4.fit <- cfa(cfa5, estimator = "WLSMV", data = dat_fa_full_W4)
+summary(cfa5_W4.fit, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+```
+
+```{r calculating factor scores W2}
+fa_scores5_W2 <- lavPredict(
+  object = cfa5_W2.fit, # model of the original CFA
+  newdata = dat_fa_full_W2, # data frame with the whole data
+  type = "lv",
+  method = "EBM", # "EBM" Empirical Bayes Model or "ML" maximum likelihood are suggested for ordinal data
+  se = "standard", # standard standard errors are calculated
+  label = TRUE
+  )
+
+dim(fa_scores5_W2)
+head(fa_scores5_W2)
+```
+
+```{r calculating factor scores W4}
+fa_scores5_W4 <- lavPredict(
+  object = cfa5_W4.fit, # model of the original CFA
+  newdata = dat_fa_full_W4, # data frame with the whole data
+  type = "lv",
+  method = "EBM", # "EBM" Empirical Bayes Model or "ML" maximum likelihood are suggested for ordinal data
+  se = "standard", # standard standard errors are calculated
+  label = TRUE
+  )
+
+dim(fa_scores5_W4)
+head(fa_scores5_W4)
+```
+
+## Join scores to data
+
+```{r join social and factor data}
+dat_W2pheno_imp <- cbind(
+  dat_W2pheno_imp, 
+  fa_scores5_W2)
+
+dat_W2pheno_imp_full <- dat_W2pheno_imp %>% 
+  dplyr::select(AID, BIO_SEX, H1GI1Y, SCID, RACE1, SES, CESD_W2, family, school, friends, neigh, religion, social)
+
+dat_W4pheno_imp <- cbind(
+  dat_W4pheno_imp, 
+  fa_scores5_W4)
+
+dat_W4pheno_imp_full <- dat_W4pheno_imp %>% 
+  dplyr::select(AID, BIO_SEX, H1GI1Y, SCID, RACE1, SES, CESD_W4, family, school, friends, neigh, religion, social)
+```
+
+# Recoding and formatting
+
+## Rename clean data
+
+```{r read clean pheno data for W2 and W4}
+# main
+dat_pheno_W2 <- dat_W2pheno_imp_full
+dat_pheno_W4 <- dat_W4pheno_imp_full
+
+# sensitivity - binary items
+dat_pheno_W2_bin <- dat_W2pheno_imp_bin
+dat_pheno_W4_bin <- dat_W4pheno_imp_bin
+```
+
+## Recoding 
+
+We recode the following:
+
+* BIO_SEX so that males (X=0) and females (X=1). For BIO_SEX: 1 = Male, 2 = Female
+* H1GI1Y - 96 to be NA 
+* Squared continuous variables
+* Create random normal distributions for X and Y - we simulate standard normal error and create this as a new variable (UM and UY). 
+
+```{r recode inputs}
+recode_inputs <- function(dat) {
+  dat %>%
+    dplyr::mutate(
+      sex = case_when(BIO_SEX == 1 ~ 0, BIO_SEX == 2 ~ 1),
+      H1GI1Y = na_if(H1GI1Y, 96),
+      family2 = family^2,
+      school2 = school^2,
+      friends2 = friends^2,
+      neigh2 = neigh^2,
+      religion2 = religion^2,
+      social2 = social^2,
+      race = relevel(factor(RACE1, levels = c("1", "2", "3", "4")), ref = "1"),
+      UM = rnorm(n()),
+      UY = rnorm(n())
+    ) %>%
+    dplyr::select(-BIO_SEX)
+}
+
+# apply to both waves
+dat_pheno_W2 <- recode_inputs(dat_pheno_W2)
+dat_pheno_W4 <- recode_inputs(dat_pheno_W4)
+```
+
+```{r recode for sensitivity}
+dat_pheno_W2_bin <- dat_pheno_W2_bin %>% 
+  dplyr::mutate(
+      sex = case_when(BIO_SEX == 1 ~ 0, BIO_SEX == 2 ~ 1),
+      H1GI1Y = na_if(H1GI1Y, 96)) %>%
+  dplyr::select(-BIO_SEX)
+
+dat_pheno_W4_bin <- dat_pheno_W4_bin %>% 
+  dplyr::mutate(
+      sex = case_when(BIO_SEX == 1 ~ 0, BIO_SEX == 2 ~ 1),
+      H1GI1Y = na_if(H1GI1Y, 96)) %>%
+  dplyr::select(-BIO_SEX)
+```
+
+Dummy code race so each category is compared to white:
+
+1 = White
+2 = Black
+3 = Native American
+4 = Asian
+
+```{r dummy code race}
+dumcode_raceses <- function(dat){
+  dat %>%
+    mutate(
+      black = 
+        case_when(
+          RACE1 == 2 ~ 1,   # black coded as 1
+          RACE1 == 1 ~ 0,   # white coded as 0
+          TRUE ~ NA_real_   # all other races coded as NA
+        ),
+      natam =
+        case_when(
+          RACE1 == 3 ~ 1,   # native american coded as 1
+          RACE1 == 1 ~ 0,   # white coded as 0
+          TRUE ~ NA_real_   # all other races coded as NA
+        ),
+      asian =
+        case_when(
+          RACE1 == 4 ~ 1,   # native american coded as 1
+          RACE1 == 1 ~ 0,   # white coded as 0
+          TRUE ~ NA_real_   # all other races coded as NA
+        )
+    ) %>% 
+    mutate( # Dummy code SES so each category is compared to high SES
+      SES_cat = 
+        case_when(
+          SES <= quantile(SES, 1/3) ~ "Low",
+          SES <= quantile(SES, 2/3) ~ "Middle",
+          TRUE ~ "High"
+          ),
+      SESlow = 
+        case_when(
+          SES_cat == "Low" ~ 1,    # low ses coded as 1
+          SES_cat == "High" ~ 0,   # high ses coded as 0
+          TRUE ~ NA_real_          # middle coded as NA
+          ), 
+      SESmid = 
+        case_when(
+          SES_cat == "Middle" ~ 1,   # middle ses coded as 1
+          SES_cat == "High" ~ 0,     # high ses coded as 0
+          TRUE ~ NA_real_            # low coded as NA
+          )
+    ) %>%
+    mutate(
+    # race covariates: 0/1 for everyone with non-missing race
+    black_cov = ifelse(is.na(RACE1), NA_real_, as.numeric(RACE1 == 2)),
+    natam_cov = ifelse(is.na(RACE1), NA_real_, as.numeric(RACE1 == 3)),
+    asian_cov = ifelse(is.na(RACE1), NA_real_, as.numeric(RACE1 == 4))
+  )
+}
+
+dat_pheno_W2 <- dumcode_raceses(dat_pheno_W2)
+dat_pheno_W4 <- dumcode_raceses(dat_pheno_W4)
+dat_pheno_W2_bin <- dumcode_raceses(dat_pheno_W2_bin)
+dat_pheno_W4_bin <- dumcode_raceses(dat_pheno_W4_bin)
+```
+
+# PGS prep
+
+**Decide here if we are using 0.1 or 0.8 INFO cut off** 
+
+```{r read and merge multiple PRS files}
+ancestries <- c("eur", "amr", "afr", "eas")
+sumstats <- c("trans_ADDH")
+info <- c("0.1") # CHANGE TO 0.8 IF WANT TO 
+```
+
+Read in data
+
+```{r make dataframe with prs}
+# format: [IID, score, ancestry, sumstat]
+ah_multi_prs_long <- expand.grid(ancestry = ancestries, sumstat = sumstats) %>%
+  mutate(file = paste0(sumstat, "_", ancestry, "_sbayesrc.profile")) %>%
+  rowwise() %>%
+  dplyr::mutate(data = list(
+    read.table(paste0("/home/thom1336/healthdis/data/pgs_prep/results/", info, "/", file), 
+               header = TRUE) %>%
+      dplyr::select(IID, SCORESUM) %>%
+      dplyr::rename(score = SCORESUM) %>%
+      dplyr::mutate(ancestry = toupper(ancestry), sumstat = sumstat)
+  )) %>%
+  pull(data) %>%
+  bind_rows() %>%
+  convert_iid_to_char
+```
+
+Check data
+
+```{r check prs data}
+nrow(ah_multi_prs_long) # 8826 people with PRS 
+head(ah_multi_prs_long)
+
+# check missings
+ah_multi_prs_long %>%
+dplyr::summarise(
+     total_NAs = sum(is.na(score)),
+     total_values = n(),
+     na_percentage = (total_NAs / total_values) * 100
+   )
+
+# distribution of PGS
+bar_PGS <- ggplot(ah_multi_prs_long, aes(x = score, fill = ancestry)) +
+                 geom_histogram(binwidth = 0.1, color = "black", alpha = 0.7) +
+                 labs(title = "Histogram of MDD2025 PRS in Addhealth", x = "Value", y = "Frequency") +
+                 theme_minimal()
+
+# save data to plot 
+ah_multi_prs_long_save <- ah_multi_prs_long %>% select(score, ancestry)
+saveRDS(ah_multi_prs_long_save, file = "/home/thom1336/healthdis/data/pgs_prep/FigureS1_data.rds")
+
+save_gg_cairo(bar_PGS, "/home/thom1336/healthdis/figures/pgs/bar_PGS.png", width = 1000, height = 650)
+```
+
+Recode into quintiles - I decided to do 3 to retain as much sample size in the group comparisons with the hope to include EUR, AFR, and AMR (rather than just EUR). This also matched the low, mid, and high SES groupings. We can further split these for a sensitivity analysis if needed. 
+
+```{r dummy code pgs}
+ah_multi_prs_long <- ah_multi_prs_long %>%
+  mutate(
+    pgs_cat = 
+      case_when(
+        score <= quantile(score, 1/3) ~ 1,
+        score <= quantile(score, 2/3) ~ 2,
+        TRUE ~ 3
+        ),
+    pgs2 = 
+      case_when(
+        pgs_cat == 2 ~ 1,    # second quintile coded as 1
+        pgs_cat == 1 ~ 0,    # low pgs coded as 0
+        TRUE ~ NA_real_       
+        ), 
+    pgs3 = 
+      case_when(
+        pgs_cat == 3 ~ 1,    # third quintile coded as 1
+        pgs_cat == 1 ~ 0,    # low pgs coded as 0
+        TRUE ~ NA_real_       
+        )
+  )
+
+freq(ah_multi_prs_long$pgs_cat)
+freq(ah_multi_prs_long$pgs2)
+```
+
+```{r read in PCs}
+dat_pcs_AFR <- read.table(
+  paste0("/project/rche/data/datasets/addhealth/clean_progress/genetic_files/qc/pca/info_cutoff/", info, "/AFR/pca_AFR.eigenvec")) %>% 
+  dplyr::select(V2:V12) %>%
+  setNames(c("IID", "PC1", "PC2", "PC3", "PC4", "PC5", "PC6", "PC7", "PC8", "PC9", "PC10")) %>%
+  convert_iid_to_char %>%
+  dplyr::rename(AID = IID) %>%
+  dplyr::mutate(ancestry = "AFR")
+
+dat_pcs_AMR <- read.table(
+  paste0("/project/rche/data/datasets/addhealth/clean_progress/genetic_files/qc/pca/info_cutoff/", info, "/AMR/pca_AMR.eigenvec")) %>% 
+  dplyr::select(V2:V12) %>%
+  setNames(c("IID", "PC1", "PC2", "PC3", "PC4", "PC5", "PC6", "PC7", "PC8", "PC9", "PC10")) %>%
+  convert_iid_to_char %>%
+  dplyr::rename(AID = IID) %>%
+  dplyr::mutate(ancestry = "AMR")
+
+dat_pcs_EAS <- read.table(
+  paste0("/project/rche/data/datasets/addhealth/clean_progress/genetic_files/qc/pca/info_cutoff/", info, "/EAS/pca_EAS.eigenvec")) %>% 
+  dplyr::select(V2:V12) %>%
+  setNames(c("IID", "PC1", "PC2", "PC3", "PC4", "PC5", "PC6", "PC7", "PC8", "PC9", "PC10")) %>%
+  convert_iid_to_char %>%
+  dplyr::rename(AID = IID) %>%
+  dplyr::mutate(ancestry = "EAS")
+
+dat_pcs_EUR <- read.table(
+  paste0("/project/rche/data/datasets/addhealth/clean_progress/genetic_files/qc/pca/info_cutoff/", info, "/EUR/pca_EUR.eigenvec")) %>% 
+  dplyr::select(V2:V12) %>%
+  setNames(c("IID", "PC1", "PC2", "PC3", "PC4", "PC5", "PC6", "PC7", "PC8", "PC9", "PC10")) %>%
+  convert_iid_to_char %>%
+  dplyr::rename(AID = IID) %>%
+  dplyr::mutate(ancestry = "EUR")
+
+dat_pcs <- rbind(dat_pcs_AFR, dat_pcs_AMR, dat_pcs_EAS, dat_pcs_EUR)
+```
+
+```{r select PGS}
+ah_multi_prs_long <- ah_multi_prs_long %>%
+  dplyr::rename(pgs = score, AID = IID) %>%
+  dplyr::select(-sumstat)
+
+dat_pgs <- inner_join(ah_multi_prs_long, dat_pcs, by = c("AID", "ancestry"))
+```
+
+## Regress out ancestry specific pcs
+
+```{r regress out ancestry specific pcs}
+dat_pgs <- dat_pgs %>%
+  group_by(ancestry) %>%
+  dplyr::mutate(
+    # fit within each group
+    pgs_reg = lm(pgs ~ PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10,
+                 data = cur_data_all())$residuals,
+    pgs_reg_cat = ntile(pgs_reg, 3)) %>%
+  ungroup() %>%
+    dplyr::mutate(
+    pgs_reg2 = case_when(
+      is.na(pgs_reg_cat)      ~ NA_real_,
+      pgs_reg_cat == 2        ~ 1,
+      pgs_reg_cat == 1        ~ 0,
+      TRUE                    ~ NA_real_
+    ),
+    pgs_reg3 = case_when(
+      is.na(pgs_reg_cat)      ~ NA_real_,
+      pgs_reg_cat == 3        ~ 1,
+      pgs_reg_cat == 1        ~ 0,
+      TRUE                    ~ NA_real_
+    )
+  )
+
+# check equal groups within-ancestry 
+dat_pgs %>%
+  count(ancestry, pgs_reg_cat)
+```
+
+## Ancestry prediction check 
+
+```{r ancestry prediction check}
+# check if ancestry predicts tertiles
+dat_pgs$pgs_reg_cat_factor <- factor(dat_pgs$pgs_reg_cat,
+                              levels = c(1, 2, 3),
+                              labels = c("Low", "Middle", "High"))
+
+# chi square test 
+tab <- table(dat_pgs$ancestry, dat_pgs$pgs_reg_cat_factor)
+chisq.test(tab)
+
+# model fit test 
+anc_check <- multinom(pgs_reg_cat_factor ~ ancestry, data = dat_pgs) # ancestry
+anc_check_null <- multinom(pgs_reg_cat_factor ~ 1, data = dat_pgs) # no ancestry 
+anova(anc_check_null, anc_check, test = "Chisq") # check for difference in fit 
+
+# check continuous PGS prediction 
+summary(lm(pgs_reg ~ ancestry, data = dat_pgs))
+```
+
+
+```{r join genetic and social data}
+# main
+dat_pheno_pgs_W2 <- inner_join(dat_pheno_W2, dat_pgs, by = "AID")
+dat_pheno_pgs_W4 <- inner_join(dat_pheno_W4, dat_pgs, by = "AID")
+
+# item sensitivity
+dat_pheno_pgs_W2_bin <- inner_join(dat_pheno_W2_bin, dat_pgs, by = "AID")
+dat_pheno_pgs_W4_bin <- inner_join(dat_pheno_W4_bin, dat_pgs, by = "AID")
+
+# check
+nrow(dat_pheno_pgs_W2) # 4478 people
+nrow(dat_pheno_pgs_W4) # 6242 people
+
+nrow(dat_pheno_pgs_W2_bin) # 4478 people
+nrow(dat_pheno_pgs_W4_bin) # 6242 people
+
+# split by ancestry
+dat_pheno_pgs_AFR_W2 <- dat_pheno_pgs_W2 %>% dplyr::filter(ancestry == "AFR") # 953 people
+dat_pheno_pgs_AMR_W2 <- dat_pheno_pgs_W2 %>% dplyr::filter(ancestry == "AMR") # 428 people
+dat_pheno_pgs_EAS_W2 <- dat_pheno_pgs_W2 %>% dplyr::filter(ancestry == "EAS") # 204 people
+dat_pheno_pgs_EUR_W2 <- dat_pheno_pgs_W2 %>% dplyr::filter(ancestry == "EUR") # 2893 people
+
+dat_pheno_pgs_AFR_W4 <- dat_pheno_pgs_W4 %>% dplyr::filter(ancestry == "AFR") # 1357 people
+dat_pheno_pgs_AMR_W4 <- dat_pheno_pgs_W4 %>% dplyr::filter(ancestry == "AMR") # 609 people
+dat_pheno_pgs_EAS_W4 <- dat_pheno_pgs_W4 %>% dplyr::filter(ancestry == "EAS") # 293 people
+dat_pheno_pgs_EUR_W4 <- dat_pheno_pgs_W4 %>% dplyr::filter(ancestry == "EUR") # 3983 people
+```
+
+```{r check differences in variable}
+freq(dat_pheno_pgs_W2$pgs_cat)
+freq(dat_pheno_pgs_W2$pgs_reg_cat)
+
+# number of people who match in both 
+dat_pheno_pgs_W2 %>%
+  dplyr::mutate(same_category = pgs_cat == pgs_reg_cat) %>%
+  group_by(pgs_cat) %>%
+  dplyr::summarise(
+    matches = sum(same_category, na.rm = TRUE),
+    total = n(),
+    proportion_match = matches / total
+  )
+```
+
+EAS and AMR are super small sample sizes - so we will likely have a power issue with these. AMR is better for W4 but still not great. But will see what the confidence intervals come out as anyway. 
+
+```{r check pgs dummy frequencies per ancestry}
+freq(dat_pheno_pgs_AFR_W2$pgs3)
+freq(dat_pheno_pgs_AMR_W2$pgs3)
+freq(dat_pheno_pgs_EAS_W2$pgs3)
+freq(dat_pheno_pgs_EUR_W2$pgs3)
+
+freq(dat_pheno_pgs_AFR_W4$pgs3)
+freq(dat_pheno_pgs_AMR_W4$pgs3)
+freq(dat_pheno_pgs_EAS_W4$pgs3)
+freq(dat_pheno_pgs_EUR_W4$pgs3)
+```
+
+# Wave comparison
+
+First check those in W2 compared to those who stayed until Wave 4 and those that didn't 
+
+```{r comparison of Wave groups}
+# sample overlap 
+nonoverlap1_W2 <- dat_pheno_W2 %>% 
+  mutate(RACE1 = as.factor(RACE1)) %>% 
+  dplyr::select(AID, H1GI1Y, sex, RACE1, SES) # in W2 
+
+nonoverlap2_W2 <- dat_pheno_W4 %>% 
+  mutate(group = 1) %>% 
+  dplyr::select(AID, group) # in W4 
+
+nonoverlap_W2 <- left_join(nonoverlap1_W2, nonoverlap2_W2) %>% 
+  mutate(group = if_else(is.na(group), 0, 1))
+
+# check for differences
+wave_check_W2 <- glm(group ~ sex + RACE1 + H1GI1Y + SES, data = nonoverlap_W2, family = binomial)
+summary(wave_check_W2)
+```
+
+Then check if W2 and W4 differ depending on if people have genetic data or not 
+
+```{r comparison of Wave groups}
+# sample overlap 
+nonoverlap1_pgs_W2 <- dat_pheno_W2 %>% 
+  mutate(RACE1 = as.factor(RACE1)) %>% 
+  dplyr::select(AID, H1GI1Y, sex, RACE1, SES) # in W2 
+
+nonoverlap2_pgs_W2 <- dat_pheno_pgs_W2 %>% 
+  mutate(group = 1) %>%
+  dplyr::select(AID, group) # has genetic data in W2
+
+nonoverlap_pgs_W2 <- left_join(nonoverlap1_pgs_W2, nonoverlap2_pgs_W2) %>% 
+  mutate(group = if_else(is.na(group), 0, 1))
+
+# check for differences
+wave_check_pgs_W2 <- glm(group ~ sex + RACE1 + H1GI1Y + SES, data = nonoverlap_pgs_W2, family = binomial)
+summary(wave_check_pgs_W2)
+```
+
+```{r comparison of Wave groups}
+# sample overlap 
+nonoverlap1_pgs_W4 <- dat_pheno_W4 %>% 
+  mutate(RACE1 = as.factor(RACE1)) %>% 
+  dplyr::select(AID, H1GI1Y, sex, RACE1, SES) # in W2 
+
+nonoverlap2_pgs_W4 <- dat_pheno_pgs_W4 %>% 
+  mutate(group = 1) %>%
+  dplyr::select(AID, group) # has genetic data in W2
+
+nonoverlap_pgs_W2 <- left_join(nonoverlap1_pgs_W4, nonoverlap2_pgs_W4) %>% 
+  mutate(group = if_else(is.na(group), 0, 1))
+
+# check for differences
+wave_check_pgs_W4 <- glm(group ~ sex + RACE1 + H1GI1Y + SES, data = nonoverlap_pgs_W2, family = binomial)
+summary(wave_check_pgs_W4)
+```
+
+# Confounders
+
+```{r select and bind covariates}
+# covars
+dat.covars.W1.raw <- dat.W1.raw %>% dplyr::select(AID, 
+                                                  PA20,  # Parent - In general are you happy yes/no
+                                                  PA61,  # Parent - How often do you drink alcohol - likert
+                                                  H1GH1, # Child - In general how is your health 1-5 
+                                                  H1FV1, # saw shooting
+                                                  H1FV2, # knife or gun pulled
+                                                  H1FV3, # someone shot you
+                                                  H1FV4 # someone stabbed you
+                                                  )
+# recode
+dat.covars.W1.raw <- dat.covars.W1.raw %>%
+  mutate(
+    happyP = case_when(PA20 %in% c(6, 7, 8, 9) ~ NA_real_, TRUE ~ PA20),
+    drinkP = case_when(PA61 %in% c(96, 97, 98, 99) ~ NA_real_, TRUE ~ PA61), 
+    health = case_when(H1GH1 %in% c(6, 7, 8, 9) ~ NA_real_, TRUE ~ H1GH1),
+    saw_shoot = case_when(H1FV1 %in% c(6, 7, 8, 9) ~ NA_real_, TRUE ~ H1FV1),
+    knife_pull = case_when(H1FV2 %in% c(6, 7, 8, 9) ~ NA_real_, TRUE ~ H1FV2),
+    shot = case_when(H1FV3 %in% c(6, 7, 8, 9) ~ NA_real_, TRUE ~ H1FV3),
+    stabbed = case_when(H1FV4 %in% c(6, 7, 8, 9) ~ NA_real_, TRUE ~ H1FV4))
+
+dat.covars.W1 <- dat.covars.W1.raw %>%
+  mutate(
+    violence_raw = rowSums(dplyr::select(., saw_shoot, knife_pull, shot, stabbed), na.rm = FALSE),
+    violence     = as.numeric(scale(violence_raw)),
+    violence_any = if_else(violence_raw > 0, 1, 0, missing = NA_real_),
+    health_bin = if_else(health > 3, 1, 0, missing = NA_real_), # fair or poor health 
+    drinkP_bin = if_else(drinkP > 4, 1, 0, missing = NA_real_) # binary - 3-5 days per week or more 
+  ) %>%
+  dplyr::select(AID, happyP, drinkP_bin, health_bin, violence)
+```
+
+## Imputation
+
+```{r impute functions}
+impute_binary_bern <- function(dat, vars) {
+  for (v in vars) {
+    if (!v %in% names(dat)) next
+    na_idx <- which(is.na(dat[[v]]))
+    if (!length(na_idx)) next
+    p <- mean(as.numeric(dat[[v]]), na.rm = TRUE)
+    dat[[v]][na_idx] <- rbinom(length(na_idx), 1, p)
+  }
+  dat
+}
+
+impute_cont_mice <- function(dat, vars, seed = 123) {
+  vars <- intersect(vars, names(dat))   # only keep vars that actually exist
+  if (!length(vars)) return(dat)        # nothing to impute
+  
+  method <- make.method(dat)
+  method[] <- ""
+  method[vars] <- "pmm"
+  
+  set.seed(seed)
+  imp <- mice(dat, m = 1, method = method, printFlag = FALSE)
+  complete(imp, 1)
+}
+```
+
+```{r impute confounders}
+binary_vars <- c("happyP", "drinkP_bin", "health_bin")
+cont_vars   <- "violence"
+
+dat.covars.W1_imp <- impute_binary_bern(dat.covars.W1, binary_vars)
+dat.covars.W1_imp <- impute_cont_mice(dat.covars.W1_imp, cont_vars)
+
+# check distribution dind't change 
+data.frame(
+  Mean_before = mean(dat.covars.W1$violence, na.rm = TRUE),
+  Mean_after  = mean(dat.covars.W1_imp$violence),
+  SD_before   = sd(dat.covars.W1$violence, na.rm = TRUE),
+  SD_after    = sd(dat.covars.W1_imp$violence)
+)
+```
+
+```{r join covars with main data}
+dat_pheno_W2 <- left_join(dat_pheno_W2, dat.covars.W1_imp, by = "AID") 
+dat_pheno_W4 <- left_join(dat_pheno_W4, dat.covars.W1_imp, by = "AID") 
+dat_pheno_pgs_W2 <- left_join(dat_pheno_pgs_W2, dat.covars.W1_imp, by = "AID") 
+dat_pheno_pgs_W4 <- left_join(dat_pheno_pgs_W4, dat.covars.W1_imp, by = "AID") 
+
+dat_pheno_W2_bin <- left_join(dat_pheno_W2_bin, dat.covars.W1_imp, by = "AID") 
+dat_pheno_W4_bin <- left_join(dat_pheno_W4_bin, dat.covars.W1_imp, by = "AID") 
+dat_pheno_pgs_W2_bin <- left_join(dat_pheno_pgs_W2_bin, dat.covars.W1_imp, by = "AID") 
+dat_pheno_pgs_W4_bin <- left_join(dat_pheno_pgs_W4_bin, dat.covars.W1_imp, by = "AID") 
+```
+
+# Age calculations (rough)
+
+IYEAR (Interview year) - H1GI1Y (Year of birth)
+
+```{r wave 2 age}
+# pheno data
+age_data_W2 <- left_join(
+  dat_pheno_W2 %>% dplyr::select(AID, H1GI1Y), 
+  dat.W2.raw %>% dplyr::select(AID, IYEAR2)
+)
+
+age_data_W2 <- age_data_W2 %>%
+  mutate(age_yr = 
+           IYEAR2 - H1GI1Y)
+
+freq(age_data_W2$age_yr)
+summary(age_data_W2$age_yr)
+
+# genetic data
+age_data_pgs_W2 <- left_join(
+  dat_pheno_pgs_W2 %>% dplyr::select(AID, H1GI1Y), 
+  dat.W2.raw %>% dplyr::select(AID, IYEAR2)
+)
+
+age_data_pgs_W2 <- age_data_pgs_W2 %>%
+  mutate(age_yr = 
+           IYEAR2 - H1GI1Y)
+
+freq(age_data_pgs_W2$age_yr)
+summary(age_data_pgs_W2$age_yr)
+```
+
+```{r wave 4 age}
+# pheno data
+age_data_W4 <- left_join(
+  dat_pheno_W4 %>% dplyr::select(AID, H1GI1Y), 
+  dat.W4.raw %>% dplyr::select(AID, IYEAR4)
+)
+
+age_data_W4 <- age_data_W4 %>%
+  mutate(
+    H1GI1Y_full = as.numeric(paste0("19", H1GI1Y)),
+    age_yr = IYEAR4 - H1GI1Y_full)
+
+freq(age_data_W4$age_yr)
+summary(age_data_W4$age_yr)
+
+# genetic data
+age_data_pgs_W4 <- left_join(
+  dat_pheno_pgs_W4 %>% dplyr::select(AID, H1GI1Y), 
+  dat.W4.raw %>% dplyr::select(AID, IYEAR4)
+)
+
+age_data_pgs_W4 <- age_data_pgs_W4 %>%
+  mutate(
+    H1GI1Y_full = as.numeric(paste0("19", H1GI1Y)),
+    age_yr = IYEAR4 - H1GI1Y_full)
+
+freq(age_data_pgs_W4$age_yr)
+summary(age_data_pgs_W4$age_yr)
+```
+
+# Create W24 outcome file
+
+Merge the 10 item W2 depression score with the clean W2 dataset. 
+
+```{r merge W24 to W2 clean}
+dat_pheno_W24 <- left_join(dat_pheno_W2, dat_outcome24, by = "AID") 
+dat_pheno_pgs_W24 <- left_join(dat_pheno_pgs_W2, dat_outcome24, by = "AID") 
+```
+
+# Create clinical outcome file 
+
+```{r create clinical depression outcome}
+# Clinical outcomes
+dat_outcome_clin.raw <- dat.W4.raw %>% dplyr::select(AID, H4ID6H, H4ID5H)
+
+dat_outcome_clin.raw <- dat_outcome_clin.raw %>%
+  dplyr::mutate(
+    clin_raw = case_when(H4ID5H %in% c(6, 7, 8, 9) ~ NA_real_, 
+                            TRUE ~ H4ID5H),
+    clin_age = case_when(H4ID6H %in% 
+                           c(1, 2, 3, 4, 5, 6, 7, 8, 9,  # people who said under 10 years are removed 
+                             96, 97, 98, 99) ~ NA_real_, 
+                            TRUE ~ H4ID6H),
+    clin = case_when(
+      is.na(clin_raw) ~ NA_real_, # true NAs are treated as such 
+      clin_raw == 1 & is.na(clin_age) ~ NA_real_, # people who didn't answer age are NA
+      !is.na(clin_age) ~ 1, 
+      TRUE ~ 0)
+    )
+
+freq(dat_outcome_clin.raw$clin_raw)
+freq(dat_outcome_clin.raw$clin_age)
+freq(dat_outcome_clin.raw$clin)
+
+dat_outcome_clin <- dat_outcome_clin.raw %>% dplyr::select(AID, clin)
+
+dat_pheno_clin <- left_join(dat_pheno_W4, dat_outcome_clin, by = "AID") 
+dat_pheno_pgs_clin <- left_join(dat_pheno_pgs_W4, dat_outcome_clin, by = "AID") 
+```
+
+# Race statistics
+
+```{r race stats}
+race_stats_W2 <- join_all(
+  list(
+  dat_pheno_W2 %>% dplyr::select(AID, RACE1),
+  dat_race.raw %>% dplyr::select(AID, MULRACE1, RACE1RUL),
+  dat.W1.raw %>% dplyr::select(AID, H1GI4)
+  ), by = "AID"
+) %>% mutate(multiracial = if_else(MULRACE1 > 5, "TRUE", "FALSE")) # multiracial
+
+race_stats_W4 <- join_all(
+  list(
+  dat_pheno_W4 %>% dplyr::select(AID, RACE1),
+  dat_race.raw %>% dplyr::select(AID, MULRACE1, RACE1RUL),
+  dat.W1.raw %>% dplyr::select(AID, H1GI4)
+  ), by = "AID"
+) %>% mutate(multiracial = if_else(MULRACE1 > 5, "TRUE", "FALSE"))
+
+# W2
+table(race_stats_W2$MULRACE1, race_stats_W2$RACE1)
+table(race_stats_W2$RACE1RUL, race_stats_W2$RACE1)
+freq(race_stats_W2$multiracial)
+freq(race_stats_W2$H1GI4)
+
+# W4
+table(race_stats_W4$MULRACE1, race_stats_W4$RACE1)
+table(race_stats_W4$RACE1RUL, race_stats_W4$RACE1)
+freq(race_stats_W4$multiracial)
+freq(race_stats_W4$H1GI4)
+```
+
+# Correlations between risk factor and social factors
+
+1 = White
+2 = Black
+3 = Native American
+4 = Asian
+
+```{r regs}
+# sex 
+sex1 <- broom::tidy(lm(social ~ sex, data = dat_pheno_W4))[2,] %>% mutate(mediator = "Social")
+sex2 <- broom::tidy(lm(family ~ sex, data = dat_pheno_W4))[2,] %>% mutate(mediator = "Family")
+sex3 <- broom::tidy(lm(school ~ sex, data = dat_pheno_W4))[2,] %>% mutate(mediator = "School")
+sex4 <- broom::tidy(lm(friends ~ sex, data = dat_pheno_W4))[2,] %>% mutate(mediator = "Friends")
+sex5 <- broom::tidy(lm(neigh ~ sex, data = dat_pheno_W4))[2,] %>% mutate(mediator = "Neigh")
+sex6 <- broom::tidy(lm(religion ~ sex, data = dat_pheno_W4))[2,] %>% mutate(mediator = "Religion")
+sex_regs <- rbind(sex1, sex2, sex3, sex4, sex5, sex6) 
+
+# ses 
+ses1 <- broom::tidy(lm(social ~ SES, data = dat_pheno_W4))[2,] %>% mutate(mediator = "Social")
+ses2 <- broom::tidy(lm(family ~ SES, data = dat_pheno_W4))[2,] %>% mutate(mediator = "Family")
+ses3 <- broom::tidy(lm(school ~ SES, data = dat_pheno_W4))[2,] %>% mutate(mediator = "School")
+ses4 <- broom::tidy(lm(friends ~ SES, data = dat_pheno_W4))[2,] %>% mutate(mediator = "Friends")
+ses5 <- broom::tidy(lm(neigh ~ SES, data = dat_pheno_W4))[2,] %>% mutate(mediator = "Neigh")
+ses6 <- broom::tidy(lm(religion ~ SES, data = dat_pheno_W4))[2,] %>% mutate(mediator = "Religion")
+ses_regs <- rbind(ses1, ses2, ses3, ses4, ses5, ses6) 
+
+# race 
+race1 <- broom::tidy(lm(social ~ race, data = dat_pheno_W4))[-1,] %>% mutate(mediator = "Social")
+race2 <- broom::tidy(lm(family ~ race, data = dat_pheno_W4))[-1,] %>% mutate(mediator = "Family")
+race3 <- broom::tidy(lm(school ~ race, data = dat_pheno_W4))[-1,] %>% mutate(mediator = "School")
+race4 <- broom::tidy(lm(friends ~ race, data = dat_pheno_W4))[-1,] %>% mutate(mediator = "Friends")
+race5 <- broom::tidy(lm(neigh ~ race, data = dat_pheno_W4))[-1,] %>% mutate(mediator = "Neigh")
+race6 <- broom::tidy(lm(religion ~ race, data = dat_pheno_W4))[-1,] %>% mutate(mediator = "Religion")
+race_regs <- rbind(race1, race2, race3, race4, race5, race6) %>% 
+  mutate(term = case_when(term == "race2" ~ "black",
+                          term == "race3" ~ "natam",
+                          term == "race4" ~ "asian"))
+
+# pgs
+pgs1 <- broom::tidy(lm(social ~ pgs, data = dat_pheno_pgs_W4))[2,] %>% mutate(mediator = "Social")
+pgs2 <- broom::tidy(lm(family ~ pgs, data = dat_pheno_pgs_W4))[2,] %>% mutate(mediator = "Family")
+pgs3 <- broom::tidy(lm(school ~ pgs, data = dat_pheno_pgs_W4))[2,] %>% mutate(mediator = "School")
+pgs4 <- broom::tidy(lm(friends ~ pgs, data = dat_pheno_pgs_W4))[2,] %>% mutate(mediator = "Friends")
+pgs5 <- broom::tidy(lm(neigh ~ pgs, data = dat_pheno_pgs_W4))[2,] %>% mutate(mediator = "Neigh")
+pgs6 <- broom::tidy(lm(religion ~ pgs, data = dat_pheno_pgs_W4))[2,] %>% mutate(mediator = "Religion")
+pgs_regs <- rbind(pgs1, pgs2, pgs3, pgs4, pgs5, pgs6) 
+
+regs <- rbind(sex_regs, ses_regs, race_regs, pgs_regs) %>% 
+  dplyr::select(term, mediator, estimate, p.value) %>%
+  dplyr::mutate(across(where(is.numeric), ~ round(., 3)))
+```
+
+
+# Export data
+
+## Phenotypic main data
+
+```{r save pheno data}
+save(dat_pheno_W2, file = "/home/thom1336/healthdis/data/dat_pheno_W2.RData")
+save(dat_pheno_W4, file = "/home/thom1336/healthdis/data/dat_pheno_W4.RData")
+```
+
+## PGS data 
+
+```{r save data}
+# save both waves
+save(dat_pheno_pgs_W2, file = "/home/thom1336/healthdis/data/dat_pheno_pgs_W2.RData")
+save(dat_pheno_pgs_W4, file = "/home/thom1336/healthdis/data/dat_pheno_pgs_W4.RData")
+
+# split by ancestry 
+save(dat_pheno_pgs_AFR_W2, file = "/home/thom1336/healthdis/data/dat_pheno_pgs_AFR_W2.RData")
+save(dat_pheno_pgs_AMR_W2, file = "/home/thom1336/healthdis/data/dat_pheno_pgs_AMR_W2.RData")
+save(dat_pheno_pgs_EAS_W2, file = "/home/thom1336/healthdis/data/dat_pheno_pgs_EAS_W2.RData")
+save(dat_pheno_pgs_EUR_W2, file = "/home/thom1336/healthdis/data/dat_pheno_pgs_EUR_W2.RData")
+
+save(dat_pheno_pgs_AFR_W4, file = "/home/thom1336/healthdis/data/dat_pheno_pgs_AFR_W4.RData")
+save(dat_pheno_pgs_AMR_W4, file = "/home/thom1336/healthdis/data/dat_pheno_pgs_AMR_W4.RData")
+save(dat_pheno_pgs_EAS_W4, file = "/home/thom1336/healthdis/data/dat_pheno_pgs_EAS_W4.RData")
+save(dat_pheno_pgs_EUR_W4, file = "/home/thom1336/healthdis/data/dat_pheno_pgs_EUR_W4.RData")
+```
+
+## Sensitivity data 
+
+```{r export data frames}
+save(dat_pheno_W2_bin, file = "/home/thom1336/healthdis/data/dat_pheno_W2_bin.RData")
+save(dat_pheno_W4_bin, file = "/home/thom1336/healthdis/data/dat_pheno_W4_bin.RData")
+
+save(dat_pheno_pgs_W2_bin, file = "/home/thom1336/healthdis/data/dat_pheno_pgs_W2_bin.RData")
+save(dat_pheno_pgs_W4_bin, file = "/home/thom1336/healthdis/data/dat_pheno_pgs_W4_bin.RData")
+
+save(dat_pheno_W24, file = "/home/thom1336/healthdis/data/dat_pheno_W24.RData")
+save(dat_pheno_pgs_W24, file = "/home/thom1336/healthdis/data/dat_pheno_pgs_W24.RData")
+
+save(dat_pheno_clin, file = "/home/thom1336/healthdis/data/dat_pheno_clin.RData")
+save(dat_pheno_pgs_clin, file = "/home/thom1336/healthdis/data/dat_pheno_pgs_clin.RData")
+```
+
+*** 
