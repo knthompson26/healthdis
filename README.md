@@ -8,7 +8,7 @@ March, 2026
 
 All code created by [Katherine N Thompson](https://scholar.google.co.uk/citations?user=xD4dn1IAAAAJ&hl=en). 
 
-[Pre-registration](https://osf.io/zhsxr/) and [Preprint](https://osf.io/preprints/psyarxiv/j5drc_v1) are available on the OSF.
+[Preregistration](https://osf.io/zhsxr/) and [Preprint](https://osf.io/preprints/psyarxiv/j5drc_v1) are available on the OSF.
 
 ***
 
