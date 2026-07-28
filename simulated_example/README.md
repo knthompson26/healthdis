@@ -5,12 +5,12 @@
 ## Purpose
 
 The original analysis in this manuscript uses restricted-access Add Health data that cannot be shared.
-These scripts allow the user to run the full analysis pipeline — data simulation, bootstrap mediation analysis, and figure generation — on fabricated data that has the same structure (variable names, types, and coding) as the real analysis-ready datasets, without any real participant data.
+These scripts allow the user to run the full analysis pipeline—data simulation, bootstrap mediation analysis, and figure generation—on fabricated data with the same structure (variable names, types, and coding) as the real analysis-ready datasets, without any real participant data.
 
 **No real Add Health data is included or reproduced anywhere here.** 
 
 Every value in the simulated datasets is drawn from random-number generators. 
-Relationships between variables were loosely, arbitrarily calibrated only so the bootstrap mediation code has something non-null to estimate — they are **not fitted to the real data and do not represent the study's actual findings**. 
+Relationships between variables were loosely, arbitrarily calibrated only so the bootstrap mediation code has something non-null to estimate — they are **not fitted to the real data and do not represent the study's findings**. 
 The simulated results and figures should not be interpreted as a preview of the paper's results; their only purpose is to demonstrate that the code runs correctly end-to-end.
 
 ## Contents
@@ -38,7 +38,7 @@ Each dataset reproduces the same columns as the real data, with the same coding 
 
 - Exposures: sex (0/1), race (with matching pairwise and full-sample dummy codings, including the intentional missingness pattern used for pairwise comparisons), socio-economic position (continuous and tertile dummies), and ancestry-adjusted polygenic score (continuous and tertile dummies)
 - Mediators: six social connection factor scores (`family`, `school`, `friends`, `neigh`, `religion`, `social`) and their squared terms, drawn with a small, arbitrary dependence on the exposures
-- Outcome: a standardized depression symptom score at each wave, generated from a synthetic linear combination of the exposures, mediators, and confounders, plus random noise
+- Outcome: a standardised depression symptom score at each wave, generated from a synthetic linear combination of the exposures, mediators, and confounders, plus random noise
 - Confounders: parental happiness, parental drinking, child health, and violence exposure
 
 Full detail on every simulated variable, and the reasoning behind it, is documented in comments throughout `simulate_data.R`.
@@ -46,12 +46,10 @@ Full detail on every simulated variable, and the reasoning behind it, is documen
 ## 2. Setup
 
 
-
-
 All five scripts point to the same local folder for reading/writing data, results, and plots:
 
 ```
-/Users/qtnzknt/Library/CloudStorage/OneDrive-UniversityCollegeLondon/Documents/healthdis/NatHB/code_review/simulated_data_scripts/
+/my directory/
 ├── simulate_data.R
 ├── pgs.R
 ├── race.R
@@ -70,7 +68,7 @@ All five scripts point to the same local folder for reading/writing data, result
     └── Figure_3_PA.png
 ```
 
-**You will need to update the directories `data_dir` to where you have saved the files.** At the moment the directories reflect my laptop paths. 
+**You will need to update the directories `data_dir` to where you have saved the files.** 
 
 Update the `data_dir` path near the top of `simulate_data.R`, and the matching `data_dir` / `results_dir` / `plots_dir` path near the top of `pgs.R`, `race.R`, `ses.R`, `sex.R`, and `fig2&3.rmd` (each is marked `# EDITED LINE`), so that all six scripts point to the same folder.
 
@@ -88,7 +86,7 @@ Run in this order:
 
 3. **`fig2&3.rmd`** — knit after all four analysis scripts have finished. Reads every `.rds` result file from `data/confound/all/`, combines them, and produces `Figure_2.png`, `Figure_3_PB_scaled.png`, and `Figure_3_PA.png` in `plots/`.
 
-Because of the quick-run bootstrap settings, the resulting figures will look noisier than — and may not resemble — the published results. This is expected and not a bug; it reflects the reduced number of bootstrap/Monte Carlo iterations, not an error in the code.
+Because of the quick-run bootstrap settings, the resulting figures will look noisier and do not reflect the manuscript results. This is expected - it reflects the reduced number of bootstrap/Monte Carlo iterations, not an error in the code.
 
 ## 4. What was changed from the original scripts
 
@@ -109,7 +107,7 @@ Every line that was added or changed relative to the scripts used for the real a
 ## 5. Notes and caveats
 
 - The simulated data is entirely fabricated and contains no real participant information. Sample sizes, effect sizes, and relationships between variables are arbitrary and do not represent the study's real data or findings.
-- The quick-run bootstrap settings trade statistical precision for speed. Confidence intervals and point estimates from this package will differ from — and should not be compared to — the manuscript results.
+- The quick-run bootstrap settings trade statistical precision for speed. Confidence intervals and point estimates from this package will differ from (and should not be compared to) the manuscript results.
 - Native American vs. White race comparisons (`natam`) are included in `race.R`'s analysis but have no case in the risk-factor label recoding in `fig2&3.rmd`'s "Join all" step, so they do not currently appear on Figures 2 or 3. This mirrors the behaviour of the original plotting script and was not something introduced by these edits; flagging it here in case it should be addressed separately.
 
 For any questions, contact Katherine N Thompson at k.n.thompson@ucl.ac.uk. 
