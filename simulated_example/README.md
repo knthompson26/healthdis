@@ -24,12 +24,12 @@ The simulated results and figures should not be interpreted as a preview of the 
 | `sex.R` | Bootstrap mediation analysis: sex |
 | `fig2&3.rmd` | Reads the bootstrap results and produces Figures 2 and 3 |
 
-`pgs.R`, `race.R`, `ses.R`, `sex.R`, and `fig2&3.rmd` are reviewer copies of the scripts used for the real analysis, with the minimal set of changes described in section 4 below needed to run them on simulated data.
+`pgs.R`, `race.R`, `ses.R`, `sex.R`, and `fig2&3.rmd` are copies of the scripts used for the real analysis, with the minimal set of changes described in section 4 below needed to run them on simulated data.
 No statistical or analytical logic was changed.
 
 ## 1. How the data was simulated
 
-`simulate_data.R` fabricates four datasets that mirror the structure of the real analysis-ready objects produced by the study's data-preparation pipeline (`dataprep.Rmd`) and factor-score extraction (`efa.R`) that are on GitHub:
+`simulate_data.R` fabricates four datasets that mirror the structure of the real analysis-ready objects produced by the study's data-preparation pipeline (`dataprep.Rmd`) and factor-score extraction (`efa.R`) that are saved in `healthdis/main` :
 
 - `dat_pheno_W2`, `dat_pheno_W4` — phenotype data at Wave 2 and Wave 4 (N = 4,000 / 4,500 simulated respondents; real data N = 9,987 / 11,139)
 - `dat_pheno_pgs_W2`, `dat_pheno_pgs_W4` — the above, linked to simulated genetic data for a ~45% / ~56% subset (matching the real linkage rate), including ancestry, polygenic score, genetic principal components, and an ancestry-adjusted polygenic score
