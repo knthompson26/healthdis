@@ -9,20 +9,9 @@ library(magrittr)
 set.seed(123)
 remove(list = ls())
 
-# load data - EDITED LINE
-data_dir <- "/Users/qtnzknt/Library/CloudStorage/OneDrive-UniversityCollegeLondon/Documents/healthdis/NatHB/code_review/simulated_data_scripts/data/"  # EDITED LINE
-load(paste0(data_dir,"dat_pheno_W2.RData"))  # EDITED LINE
-load(paste0(data_dir,"dat_pheno_W4.RData"))  # EDITED LINE
-
-# ---- Quick-run settings - EDITED LINES BELOW ----
-# The full analysis uses R = 1000 bootstrap resamples, each expanded into a
-# 1000x Monte Carlo draw (i.e. up to ~1000 x 1000 x N rows of arithmetic per
-# wave/exposure combination). That's designed for an HPC cluster and can
-# take hours to run. For a quick check that the code runs end-to-end and
-# produces sensibly-shaped output, both are reduced below.
-boot_R  <- 20   # bootstrap resamples (full analysis: 1000)  # EDITED LINE
-mc_reps <- 50   # Monte Carlo expansion per resample (full analysis: 1000)  # EDITED LINE
-# --------------------------------------------------------------------------------------
+# load data
+load("/home/thom1336/healthdis/data/dat_pheno_W2.RData")
+load("/home/thom1336/healthdis/data/dat_pheno_W4.RData")
 
 # list of mediators
 mediators <- c("family", "school", "friends", "neigh", "religion", "social")
@@ -52,8 +41,8 @@ bootstrap_stat <- function(data, indices, wave_name, mediators, race_var) {
   #--------------------------------------------
   # Monte Carlo expansion (inner loop)
   #--------------------------------------------
-  dat_expanded <- dat[rep(1:nrow(dat), each = mc_reps), ]  # EDITED LINE (was: each = 1000)  
-  dat_expanded$original <- rep(c(1, rep(0, mc_reps - 1)), times = nrow(dat))  # EDITED LINE (was: rep(0, 999))
+  dat_expanded <- dat[rep(1:nrow(dat), each = 1000), ]  
+  dat_expanded$original <- rep(c(1, rep(0, 999)), times = nrow(dat))
   dat_expanded$UM <- rnorm(nrow(dat_expanded))
   dat_expanded$UY <- rnorm(nrow(dat_expanded))
   
@@ -409,7 +398,7 @@ for (wave in names(waves)) {
     boot_results <- boot(
       data = waves[[wave]]$data,
       statistic = function(d, i) bootstrap_stat(d, i, wave_name = wave, mediators = mediators, race_var = race_var), # loops through race_var
-      R = boot_R  # EDITED LINE (was: R = 1000)
+      R = 1000
     )
     
     estimates <- boot_results$t
@@ -434,7 +423,7 @@ for (wave in names(waves)) {
       ) %>%
       dplyr::select(Wave, Race, Mediator, Effect_Type, Mean, SE, CI_Low, CI_High) # final table
     
-    saveRDS(results, file = paste0(data_dir, "confound/all/race/bootstrap_results_", wave, "_", race_var, ".rds"))  # EDITED LINE
+    saveRDS(results, file = paste0("/home/thom1336/healthdis/data/confound/all/race/bootstrap_results_", wave, "_", race_var, ".rds"))
     cat("Saved results for wave:", wave, "and race variable:", race_var, "\n")
   }
 }
