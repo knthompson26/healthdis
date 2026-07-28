@@ -14,9 +14,13 @@ All code created by [Katherine N Thompson](https://scholar.google.co.uk/citation
 
 Analyses for this project were conducted in R (Version 4.0.3) on the Rossmann cluster hosted by Purdue University. 
 
-Below provides the file structure with a brief description of each script. 
+Below is the file structure with a brief description of each script. 
 
 ***
+
+**Demo**
+
+`/simulated_example/` provides a demo of how to run the code using simulated data - See README in this folder to run code demo. 
 
 **Data Prep**
 
