@@ -20,7 +20,7 @@ Below is the file structure with a brief description of each script.
 
 **Demo**
 
-`/simulated_example/` provides a demo of how to run the code using simulated data - See README in this folder to run code demo. 
+`/simulated_example/` provides a demo of how to run the code using simulated data - see the README in this folder to run code demo. 
 
 **Data Prep**
 
