@@ -59,6 +59,12 @@ Below is the file structure with a brief description of each script.
                 
 ***
 
-**Required R packages:** `purrr`, `tidyr`, `dplyr`, `magrittr`, `purrr`, `tidyr`, `boot`, `tidyverse`, `rlang`, `knitr`, `viridis`, `RColorBrewer`, `patchwork`, `ggplot2`, `ggpattern`, `cowplot`, `grid`, `scales`.
+**Technical details**
+
+* Required R packages: `purrr`, `tidyr`, `dplyr`, `magrittr`, `purrr`, `tidyr`, `boot`, `tidyverse`, `rlang`, `knitr`, `viridis`, `RColorBrewer`, `patchwork`, `ggplot2`, `ggpattern`, `cowplot`, `grid`, `scales`.
+* No non-standard hardware required.
+* Run time is dependent on bootstrapping and Monte Carlo expansions. 
+* Expected output consists of a data frame per outcome (Wave) which includes `Wave`, `Mediator`, `Effect_Type`, `Mean`, `SE`, `CI_Low`, `CI_High` columns. 
+* A demo with fabricated dummy data and corresponding instructions is provided in `/simulated_example/`. 
 
 ***
