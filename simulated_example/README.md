@@ -102,9 +102,9 @@ Every line that was added or changed relative to the scripts used for the real a
 - **File paths.** Added a `results_dir` and `plots_dir` at the top, and every `readRDS()` / `ggsave()` call was updated to use them instead of Katie's private paths.
 - **Axis limits.** The y-axis ranges in Figures 2 and 3 were originally hardcoded (e.g. `c(0, 0.4)`, `c(-20, 50)`) and tuned to the real published effect sizes. Because the simulated data's effect sizes are arbitrary, some results (particularly SES: Low and PGS: High) fell outside those hardcoded windows and were silently dropped from the plots. The axis limits are now computed dynamically from the data itself, so every risk factor is shown regardless of the underlying data.
 
-**`simulate_data.R`** is a new script written for this review package; it has no "original" counterpart to diff against.
+**`simulate_data.R`** is a new script written for this dummy exercise.
 
-## 5. Notes and caveats
+## 5. Notes
 
 - The simulated data is entirely fabricated and contains no real participant information. Sample sizes, effect sizes, and relationships between variables are arbitrary and do not represent the study's real data or findings.
 - The quick-run bootstrap settings trade statistical precision for speed. Confidence intervals and point estimates from this package will differ from (and should not be compared to) the manuscript results.
