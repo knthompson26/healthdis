@@ -58,3 +58,7 @@ Below is the file structure with a brief description of each script.
 3. `/robust/ses_byrace.R` SES as the exposure and stratified by race
                 
 ***
+
+**Required R packages:** `purrr`, `tidyr`, `dplyr`, `magrittr`, `purrr`, `tidyr`, `boot`, `tidyverse`, `rlang`, `knitr`, `viridis`, `RColorBrewer`, `patchwork`, `ggplot2`, `ggpattern`, `cowplot`, `grid`, `scales`.
+
+***
