@@ -10,7 +10,7 @@ These scripts allow the user to run the full analysis pipeline—data simulation
 **No real Add Health data is included or reproduced anywhere here.** 
 
 Every value in the simulated datasets is drawn from random-number generators. 
-Relationships between variables were loosely, arbitrarily calibrated only so the bootstrap mediation code has something non-null to estimate — they are **not fitted to the real data and do not represent the study's findings**. 
+Relationships between variables were loosely, arbitrarily calibrated only so the bootstrap mediation code has something non-null to estimate - they are **not fitted to the real data and do not represent the study's findings**. 
 The simulated results and figures should not be interpreted as a preview of the paper's results; their only purpose is to demonstrate that the code runs correctly end-to-end.
 
 ## Contents
