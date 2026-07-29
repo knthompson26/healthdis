@@ -5,7 +5,7 @@
 ## Purpose
 
 The original analysis in this manuscript uses restricted-access Add Health data that cannot be shared.
-These scripts allow the user to run the full analysis pipeline—data simulation, bootstrap mediation analysis, and figure generation—on fabricated data with the same structure (variable names, types, and coding) as the real analysis-ready datasets, without any real participant data.
+These scripts allow the user to run the full analysis pipeline (data simulation, bootstrap interventional effects analysis, and figure generation) on fabricated data with the same structure (variable names, types, and coding) as the real analysis-ready datasets, without any real participant data.
 
 **No real Add Health data is included or reproduced anywhere here.** 
 
